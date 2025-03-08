@@ -7,10 +7,6 @@ export default function Home() {
   return (
     <div className="container mx-auto px-4 py-8">
       <section className="mb-12 text-center">
-        <h1 className="text-4xl font-bold tracking-tight mb-4">Discover & Share Makeup Looks</h1>
-        <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
-          Find inspiration from your favorite looks and discover the exact products used to create them
-        </p>
         <div className="flex justify-center gap-4">
           <Button size="lg">Explore Looks</Button>
           <Button size="lg" variant="outline">
@@ -29,7 +25,7 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <MakeupPost
             username="beauty_guru"
-            imageUrl="/placeholder.svg?height=500&width=400"
+            imageUrl="/face_1.jpg?height=500&width=400"
             title="Summer Glow Look"
             likes={243}
             comments={18}
