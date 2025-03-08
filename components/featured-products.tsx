@@ -28,7 +28,7 @@ const products = [
     brand: "SUQQU",
     price: "¥6,600",
     category: "アイシャドウ",
-    imageUrl: "/デザイニングカラーアイズ.jpg?height=200&width=200",
+    imageUrl: "/designing-color-eyes.jpg?height=200&width=200",
     usedCount: 156,
   },
   {

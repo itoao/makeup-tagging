@@ -33,7 +33,7 @@ export default function Home() {
           />
           <MakeupPost
             username="makeup_artist"
-            imageUrl="/placeholder.svg?height=500&width=400"
+            imageUrl="/face_2.jpg?height=500&width=400"
             title="Natural Everyday Makeup"
             likes={187}
             comments={24}
@@ -41,7 +41,7 @@ export default function Home() {
           />
           <MakeupPost
             username="style_icon"
-            imageUrl="/placeholder.svg?height=500&width=400"
+            imageUrl="/face_3.jpg?height=500&width=400"
             title="Bold Evening Look"
             likes={312}
             comments={42}
