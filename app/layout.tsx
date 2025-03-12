@@ -1,6 +1,10 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
+import { ClerkProvider } from '@clerk/nextjs'
+import { Navbar } from '@/components/navbar'
+import { QueryProvider } from '@/providers/query-provider'
+import { Toaster } from '@/components/ui/sonner'
 
 export const metadata: Metadata = {
   title: 'tap&make',
@@ -13,15 +17,23 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ja">
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-        <body>{children}</body>
-      </ThemeProvider>
-    </html>
+    <ClerkProvider>
+      <html lang="ja">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <body>
+            <QueryProvider>
+              <Navbar />
+              <main>{children}</main>
+              <Toaster />
+            </QueryProvider>
+          </body>
+        </ThemeProvider>
+      </html>
+    </ClerkProvider>
   )
 }
