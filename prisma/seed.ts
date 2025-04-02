@@ -107,6 +107,21 @@ async function main() {
   ]);
   console.log(`${brands.length}個のブランドを作成しました`);
 
+  // ユーザーの作成
+  console.log('ユーザーを作成中...');
+  const user = await prisma.user.upsert({
+    where: { id: 'seed-user-id' }, // ClerkのユーザーIDなど、固定のIDを使用
+    update: {},
+    create: {
+      id: 'seed-user-id',
+      username: 'seeduser',
+      name: 'Seed User',
+      email: 'seed@example.com',
+      image: '/placeholder-user.jpg', // imageUrl -> image に変更
+    },
+  });
+  console.log(`ユーザー "${user.username}" を作成しました`);
+
   // 製品の作成
   console.log('製品を作成中...');
   const baseCategory = categories.find(c => c.name === 'ベースメイク')!;
@@ -159,6 +174,95 @@ async function main() {
     }),
   ]);
   console.log(`${products.length}個の製品を作成しました`);
+
+  // 投稿の作成
+  console.log('投稿を作成中...');
+  const posts = await Promise.all([
+    prisma.post.upsert({
+      where: { id: 'post-1' },
+      update: {},
+      create: {
+        id: 'post-1',
+        title: '今日のメイク', // title を追加
+        userId: user.id,
+        imageUrl: '/face_1.jpg',
+        description: '今日のメイク💄 マキアージュの下地とKATEのマスカラを使ってみました✨', // caption -> description に変更
+        // products リレーションは Tag 経由なので削除
+      },
+    }),
+    prisma.post.upsert({
+      where: { id: 'post-2' },
+      update: {},
+      create: {
+        id: 'post-2',
+        title: 'リップモンスターレビュー', // title を追加
+        userId: user.id,
+        imageUrl: '/face_2.jpg',
+        description: 'OPERAのリップモンスター、本当に落ちにくい！💋 色持ち最高です👍', // caption -> description に変更
+        // products リレーションは Tag 経由なので削除
+      },
+    }),
+    prisma.post.upsert({
+      where: { id: 'post-3' },
+      update: {},
+      create: {
+        id: 'post-3',
+        title: '今日のフルメイク', // title を追加
+        userId: user.id,
+        imageUrl: '/face_3.jpg',
+        description: 'フルメイク！今日の主役はリップモンスター💄✨', // caption -> description に変更
+        // products リレーションは Tag 経由なので削除
+      },
+    }),
+  ]);
+  console.log(`${posts.length}個の投稿を作成しました`);
+
+  // タグの作成 (Post と Product の関連付け)
+  console.log('タグを作成中...');
+  const post1 = posts.find(p => p.id === 'post-1')!;
+  const post2 = posts.find(p => p.id === 'post-2')!;
+  const post3 = posts.find(p => p.id === 'post-3')!;
+  const product1 = products.find(p => p.id === 'product-1')!;
+  const product2 = products.find(p => p.id === 'product-2')!;
+  const product3 = products.find(p => p.id === 'product-3')!;
+
+  const tags = await Promise.all([
+    // Post 1 のタグ
+    prisma.tag.upsert({
+      where: { id: 'tag-1-1' }, update: {}, create: {
+        id: 'tag-1-1', postId: post1.id, productId: product1.id, xPosition: 30, yPosition: 40,
+      },
+    }),
+    prisma.tag.upsert({
+      where: { id: 'tag-1-2' }, update: {}, create: {
+        id: 'tag-1-2', postId: post1.id, productId: product2.id, xPosition: 70, yPosition: 60,
+      },
+    }),
+    // Post 2 のタグ
+    prisma.tag.upsert({
+      where: { id: 'tag-2-1' }, update: {}, create: {
+        id: 'tag-2-1', postId: post2.id, productId: product3.id, xPosition: 50, yPosition: 50,
+      },
+    }),
+    // Post 3 のタグ
+    prisma.tag.upsert({
+      where: { id: 'tag-3-1' }, update: {}, create: {
+        id: 'tag-3-1', postId: post3.id, productId: product1.id, xPosition: 20, yPosition: 30,
+      },
+    }),
+    prisma.tag.upsert({
+      where: { id: 'tag-3-2' }, update: {}, create: {
+        id: 'tag-3-2', postId: post3.id, productId: product2.id, xPosition: 50, yPosition: 50,
+      },
+    }),
+    prisma.tag.upsert({
+      where: { id: 'tag-3-3' }, update: {}, create: {
+        id: 'tag-3-3', postId: post3.id, productId: product3.id, xPosition: 80, yPosition: 70,
+      },
+    }),
+  ]);
+  console.log(`${tags.length}個のタグを作成しました`);
+
 
   console.log('✅ シード処理が完了しました');
 }

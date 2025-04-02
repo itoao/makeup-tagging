@@ -8,18 +8,21 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
-    const limit = Number(searchParams.get('limit') || '10');
-    const page = Number(searchParams.get('page') || '1');
-    const skip = (page - 1) * limit;
-    const currentUserId = await getUserId();
+    // const limit = Number(searchParams.get('limit') || '10'); // Remove duplicate declaration
+    const page = Number(searchParams.get('page') || '1'); // Keep for pagination info, but remove skip/take
+    const limit = Number(searchParams.get('limit') || '10'); // Keep for pagination info
+    // const currentUserId = await getUserId(); // Remove user-specific logic
 
-    // クエリパラメータに基づいてフィルタリング
-    const where = userId ? { userId } : {};
+    // クエリパラメータに基づいてフィルタリング (Remove filtering)
+    // const where = userId ? { userId } : {};
+    const where = {}; // No filter for now
 
-    // 投稿一覧を取得
+    console.log('Fetching posts from DB...'); // Add log
+
+    // 投稿一覧を取得 (Restore include, remove skip/take)
     const posts = await prisma.post.findMany({
       where,
-      include: {
+      include: { // Restore include
         user: {
           select: {
             id: true,
@@ -48,41 +51,44 @@ export async function GET(req: NextRequest) {
       orderBy: {
         createdAt: 'desc',
       },
-      skip,
-      take: limit,
+      // skip, // Remove pagination for query
+      // take: limit, // Remove pagination for query
     });
 
+    console.log(`Found ${posts.length} posts.`); // Add log with count
+
     // 総投稿数を取得
-    const total = await prisma.post.count({ where });
+    const total = await prisma.post.count({ where }); // Keep total count
 
-    // 現在のユーザーがいいねしている投稿を取得
-    let likedPostIds: string[] = [];
-    if (currentUserId) {
-      const likes = await prisma.like.findMany({
-        where: {
-          userId: currentUserId,
-          postId: {
-            in: posts.map(post => post.id),
-          },
-        },
-        select: {
-          postId: true,
-        },
-      });
-      likedPostIds = likes.map(like => like.postId);
-    }
+    // // Remove user-specific like logic
+    // let likedPostIds: string[] = [];
+    // if (currentUserId) {
+    //   const likes = await prisma.like.findMany({
+    //     where: {
+    //       userId: currentUserId,
+    //       postId: {
+    //         in: posts.map(post => post.id),
+    //       },
+    //     },
+    //     select: {
+    //       postId: true,
+    //     },
+    //   });
+    //   likedPostIds = likes.map(like => like.postId);
+    // }
 
-    // 投稿にいいね情報を追加
-    const postsWithLikeInfo = posts.map(post => ({
-      ...post,
-      isLiked: likedPostIds.includes(post.id),
-    }));
+    // // Remove adding like info
+    // const postsWithLikeInfo = posts.map(post => ({
+    //   ...post,
+    //   isLiked: likedPostIds.includes(post.id),
+    // }));
 
+    // Return raw posts for now
     return NextResponse.json({
-      posts: postsWithLikeInfo,
+      posts: posts, // Return raw posts
       pagination: {
         total,
-        page,
+        page, // Keep original page/limit for pagination info if needed later
         limit,
         pages: Math.ceil(total / limit),
       },

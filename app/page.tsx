@@ -1,16 +1,49 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { MakeupPost } from "@/components/makeup-post"
 import { FeaturedProducts } from "@/components/featured-products"
+import { postApi } from "@/lib/api"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function Home() {
+  const [trendingPosts, setTrendingPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchTrendingPosts = async () => {
+      try {
+        setLoading(true)
+        const { data, error } = await postApi.getPosts({ 
+          sort: 'popular',
+          limit: 3
+        })
+        
+        console.log('API Response:', { data, error }); // Add console log here
+
+        if (!error && data) {
+          setTrendingPosts(data.posts)
+        }
+      } catch (err) {
+        console.error("Error fetching trending posts:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTrendingPosts()
+  }, [])
   return (
     <div className="container mx-auto px-4 py-8">
       <section className="mb-12 text-center">
         <div className="flex justify-center gap-4">
-          <Button size="lg">Explore Looks</Button>
-          <Button size="lg" variant="outline">
-            Share Your Makeup
+          <Button size="lg" asChild>
+            <Link href="/explore">Explore Looks</Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link href="/create">Share Your Makeup</Link>
           </Button>
         </div>
       </section>
@@ -22,32 +55,44 @@ export default function Home() {
             View all
           </Link>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <MakeupPost
-            username="beauty_guru"
-            imageUrl="/face_1.jpg?height=500&width=400"
-            title="Summer Glow Look"
-            likes={243}
-            comments={18}
-            productCount={5}
-          />
-          <MakeupPost
-            username="makeup_artist"
-            imageUrl="/face_2.jpg?height=500&width=400"
-            title="Natural Everyday Makeup"
-            likes={187}
-            comments={24}
-            productCount={7}
-          />
-          <MakeupPost
-            username="style_icon"
-            imageUrl="/face_3.jpg?height=500&width=400"
-            title="Bold Evening Look"
-            likes={312}
-            comments={42}
-            productCount={8}
-          />
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={`skeleton-${index}`} className="space-y-3">
+                <Skeleton className="h-[300px] w-full rounded-lg" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-1/4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : trendingPosts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Filter out posts without an id and pass postId */}
+            {trendingPosts.filter(post => post?.id).map((post) => (
+              <MakeupPost
+                key={post.id} // post.id is guaranteed to exist here
+                username={post.user?.username ?? 'unknown_user'}
+                imageUrl={post.imageUrl}
+                title={post.title ?? 'Untitled Post'}
+                likes={post._count?.likes ?? 0}
+                comments={post._count?.comments ?? 0}
+                productCount={post.tags?.length ?? 0}
+                postId={post.id} // Pass the required postId
+              />
+            ))}
+          </div>
+        ) : (
+          // データがない場合の表示 (フォールバックを削除し、メッセージを追加)
+          <div className="text-center text-muted-foreground py-8">
+            <p>現在、トレンドの投稿はありません。</p>
+            <p className="mt-2">新しいメイクを投稿してみませんか？</p>
+            <Button asChild className="mt-4">
+              <Link href="/create">投稿を作成する</Link>
+            </Button>
+          </div>
+        )}
       </section>
 
       <section className="mb-12">
@@ -61,10 +106,11 @@ export default function Home() {
           <p className="text-muted-foreground mb-6">
             Upload your photo, tag the products you use, and inspire others with your unique style
           </p>
-          <Button size="lg">Create Your First Post</Button>
+          <Button size="lg" asChild>
+            <Link href="/create">Create Your First Post</Link>
+          </Button>
         </div>
       </section>
     </div>
   )
 }
-

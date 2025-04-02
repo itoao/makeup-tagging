@@ -1,15 +1,18 @@
+{/* 'use client' */}
 import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ClerkProvider } from '@clerk/nextjs'
 import { Navbar } from '@/components/navbar'
+import { MobileNav } from '@/components/mobile-nav'
 import { QueryProvider } from '@/providers/query-provider'
 import { Toaster } from '@/components/ui/sonner'
 
-export const metadata: Metadata = {
-  title: 'tap&make',
-  description: '憧れのメイク、ワンタップで再現。',
-}
+
+// export const metadata: Metadata = {
+//   title: 'tap&make',
+//   description: '憧れのメイク、ワンタップで再現。',
+// }
 
 export default function RootLayout({
   children,
@@ -17,23 +20,24 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="ja">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <body>
+    <html lang="ja" suppressHydrationWarning>
+      <body>
+        <ClerkProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
             <QueryProvider>
               <Navbar />
-              <main>{children}</main>
+              <main className="pb-16 md:pb-0">{children}</main>
+              <MobileNav />
               <Toaster />
             </QueryProvider>
-          </body>
-        </ThemeProvider>
-      </html>
-    </ClerkProvider>
+          </ThemeProvider>
+        </ClerkProvider>
+      </body>
+    </html>
   )
 }

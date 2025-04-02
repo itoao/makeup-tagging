@@ -143,12 +143,13 @@ export const userApi = {
 // 投稿関連のAPI関数
 export const postApi = {
   // 投稿一覧を取得
-  getPosts: (params?: { userId?: string; page?: number; limit?: number }) => {
+  getPosts: (params?: { userId?: string; page?: number; limit?: number; sort?: 'popular' | 'latest' | string }) => { // Add sort parameter
     const queryParams = new URLSearchParams();
     if (params?.userId) queryParams.append('userId', params.userId);
     if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.sort) queryParams.append('sort', params.sort); // Add sort to query params
     if (params?.limit) queryParams.append('limit', params.limit.toString());
-    
+
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<{ posts: any[]; pagination: any }>(`/posts${query}`);
   },

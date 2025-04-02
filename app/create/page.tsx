@@ -2,28 +2,51 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
-import { PlusCircle, Tag, X } from "lucide-react"
+import { PlusCircle, Tag, X, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { useUser } from "@clerk/nextjs"
+import { postApi } from "@/lib/api"
 import Image from "next/image"
 import { ProductTag } from "@/components/product-tag"
 
 export default function CreatePost() {
+  const router = useRouter()
+  const { isSignedIn, isLoaded } = useUser()
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
   const [image, setImage] = useState<string | null>(null)
-  const [tags, setTags] = useState<Array<{ id: number; x: number; y: number; product: string | null }>>([])
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [tags, setTags] = useState<Array<{ id: number; x: number; y: number; product: string | null; productId?: string }>>([])
   const [activeTag, setActiveTag] = useState<number | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const imageRef = useRef<HTMLDivElement>(null)
+  
+  // Check if user is signed in
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      toast.error("投稿するにはログインが必要です")
+      router.push("/sign-in")
+    }
+  }, [isLoaded, isSignedIn, router])
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // In a real app, you would upload the file to a server
-      // For this demo, we'll use a placeholder
-      setImage("/placeholder.svg?height=600&width=400")
+      setImageFile(file)
+      
+      // Create a preview URL
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setImage(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
@@ -45,11 +68,11 @@ export default function CreatePost() {
     setActiveTag(newTag.id)
   }
 
-  const handleTagProduct = (id: number, product: string) => {
+  const handleTagProduct = (id: number, product: string, productId?: string) => {
     setTags(
       tags.map((tag) => {
         if (tag.id === id) {
-          return { ...tag, product }
+          return { ...tag, product, productId }
         }
         return tag
       }),
@@ -64,15 +87,79 @@ export default function CreatePost() {
     }
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!title.trim()) {
+      toast.error("タイトルを入力してください")
+      return
+    }
+    
+    if (!imageFile) {
+      toast.error("画像をアップロードしてください")
+      return
+    }
+    
+    try {
+      setSubmitting(true)
+      
+      // Create FormData for the API request
+      const formData = new FormData()
+      formData.append("title", title)
+      formData.append("description", description)
+      formData.append("image", imageFile)
+      
+      // Add tags data
+      const tagsData = tags
+        .filter(tag => tag.product && tag.productId) // Only include tags with products
+        .map(tag => ({
+          xPosition: tag.x,
+          yPosition: tag.y,
+          productId: tag.productId
+        }))
+      
+      formData.append("tags", JSON.stringify(tagsData))
+      
+      // Submit the post
+      const { data, error } = await postApi.createPost(formData)
+      
+      if (error) {
+        toast.error(`投稿の作成に失敗しました: ${error}`)
+        return
+      }
+      
+      toast.success("投稿を作成しました")
+      
+      // Redirect to the new post
+      if (data && data.id) {
+        router.push(`/post/${data.id}`)
+      } else {
+        router.push("/")
+      }
+    } catch (err) {
+      console.error("Error creating post:", err)
+      toast.error("投稿の作成中にエラーが発生しました")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <h1 className="text-3xl font-bold mb-6">Create New Makeup Post</h1>
 
-      <div className="grid md:grid-cols-2 gap-8">
+      <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-8">
         <div>
           <div className="mb-6">
             <Label htmlFor="title">Post Title</Label>
-            <Input id="title" placeholder="e.g., Summer Glow Makeup Look" className="mt-1" />
+            <Input 
+              id="title" 
+              placeholder="e.g., Summer Glow Makeup Look" 
+              className="mt-1"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
           </div>
 
           <div className="mb-6">
@@ -80,7 +167,9 @@ export default function CreatePost() {
             <Textarea
               id="description"
               placeholder="Describe your makeup look and techniques used..."
-              className="mt-1 h-32"
+              className="mt-1 h-32" 
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
@@ -153,7 +242,7 @@ export default function CreatePost() {
 
                     {activeTag === tag.id ? (
                       <div className="mt-3">
-                        <ProductTag onSelect={(product) => handleTagProduct(tag.id, product)} />
+                        <ProductTag onSelect={(product, productId) => handleTagProduct(tag.id, product, productId)} />
                       </div>
                     ) : (
                       <div className="mt-3">
@@ -186,13 +275,24 @@ export default function CreatePost() {
           )}
 
           <div className="mt-8">
-            <Button className="w-full" size="lg" disabled={tags.length === 0}>
-              Publish Makeup Post
+            <Button 
+              type="submit" 
+              className="w-full" 
+              size="lg" 
+              disabled={submitting || !image || !title.trim()}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                "Publish Makeup Post"
+              )}
             </Button>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   )
 }
-
