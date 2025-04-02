@@ -59,7 +59,11 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching products:', error);
+    if (error instanceof Error) {
+      console.error('Error fetching products:', error.message, error.stack);
+    } else {
+      console.error('Error fetching products (unknown type):', error);
+    }
     return NextResponse.json(
       { error: '製品一覧の取得に失敗しました' },
       { status: 500 }

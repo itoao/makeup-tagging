@@ -94,7 +94,11 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching posts:', error);
+    if (error instanceof Error) {
+      console.error('Error fetching posts:', error.message, error.stack);
+    } else {
+      console.error('Error fetching posts (unknown type):', error);
+    }
     return NextResponse.json(
       { error: '投稿一覧の取得に失敗しました' },
       { status: 500 }
