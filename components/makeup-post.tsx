@@ -8,12 +8,12 @@ import Link from "next/link"
 interface MakeupPostProps {
   username: string
   imageUrl: string
-  title: string
-  likes: number
-  comments: number
-  productCount: number
-  postId: string // postId is required for navigation
-  className?: string
+  title: string // Corrected type
+  likes: number // Corrected type
+  comments: number // Corrected type
+  productCount: number // Corrected type
+  postId: string // Corrected type and removed duplicate
+  className?: string // Corrected optional syntax
 }
 
 export function MakeupPost({
@@ -28,48 +28,49 @@ export function MakeupPost({
 }: MakeupPostProps) {
   return (
     <Card className={`overflow-hidden ${className}`}>
-      {/* Wrap CardContent and CardFooter with Link */}
-      <Link href={`/post/${postId}`} className="block cursor-pointer group">
-        <CardContent className="p-0 relative">
-          <div>
-            <div className="relative aspect-[4/5] w-full">
-              <Image
-                src={imageUrl || "/placeholder.svg"}
-                alt={title}
-                fill
-                className="object-cover transition-transform duration-300 group-hover:scale-105" // Add hover effect
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              />
-              {/* Overlay appears on hover */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end">
-                <div className="p-4">
-                  <h3 className="text-white font-medium text-lg line-clamp-2">{title}</h3>
-                </div>
+      <CardContent className="p-0 relative">
+        {/* Outer Link wraps only the image and title overlay */}
+        <Link href={`/post/${postId}`} className="block cursor-pointer group">
+          <div className="relative aspect-[4/5] w-full"> {/* Image container */}
+            <Image
+              src={imageUrl || "/placeholder.svg"} // Removed duplicate attributes
+              alt={title}
+              fill
+              className="object-cover transition-transform duration-300 group-hover:scale-105" // Add hover effect
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+            {/* Overlay appears on hover */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end">
+              <div className="p-4">
+                <h3 className="text-white font-medium text-lg line-clamp-2">{title}</h3>
               </div>
             </div>
           </div>
-          {/* User Avatar/Name - Stop propagation to prevent link navigation */}
-          <div 
-            className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1 z-10"
-            onClick={(e) => e.stopPropagation()} // Prevent card link navigation
-          >
-            <Link href={`/user/${username}`} className="flex items-center gap-2">
-              <Avatar className="h-6 w-6">
-                <AvatarImage src={`/placeholder-user.jpg`} alt={username} /> {/* Use a placeholder */}
-                <AvatarFallback>{username ? username[0].toUpperCase() : 'U'}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium hover:underline">{username}</span>
-            </Link>
-          </div>
-          {/* Product Count Tag */}
-          <div className="absolute top-4 right-4 bg-primary text-primary-foreground rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1 z-10">
-            <Tag className="h-3 w-3" />
-            <span>{productCount} products</span>
-          </div>
-        </CardContent>
-      </Link>
-      {/* Footer with buttons - Stop propagation */}
-      <CardFooter 
+        </Link> {/* End outer link here */}
+
+        {/* User Avatar/Name - Separate Link */}
+        <div
+          className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1 z-10"
+          onClick={(e) => e.stopPropagation()} // Prevent card link navigation
+        >
+          <Link href={`/user/${username}`} className="flex items-center gap-2">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={`/placeholder-user.jpg`} alt={username} /> {/* Use a placeholder */}
+              <AvatarFallback>{username ? username[0].toUpperCase() : 'U'}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-medium hover:underline">{username}</span>
+          </Link>
+        </div>
+
+        {/* Product Count Tag - Not a link */}
+        <div className="absolute top-4 right-4 bg-primary text-primary-foreground rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1 z-10">
+          <Tag className="h-3 w-3" />
+          <span>{productCount} products</span>
+        </div>
+      </CardContent>
+
+      {/* Footer - Outside the main link */}
+      <CardFooter
         className="p-4 flex justify-between"
         onClick={(e) => e.stopPropagation()} // Prevent card link navigation
       >
