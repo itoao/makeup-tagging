@@ -21,6 +21,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" suppressHydrationWarning>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+        {/* Consider adding other meta tags like title, description here if needed */}
+      </head>
       <body>
         <ClerkProvider>
           <ThemeProvider

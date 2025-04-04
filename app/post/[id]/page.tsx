@@ -1,21 +1,21 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { postApi, commentApi } from "@/lib/api"
+import { useState, useEffect, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { postApi, commentApi } from "@/lib/api";
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from "@/components/ui/skeleton";
 // Import Tag icon with an alias to avoid naming conflict
-import { Heart, MessageCircle, Share2, Bookmark, Tag as TagIcon, MoreHorizontal } from "lucide-react"
-import { useUser } from "@clerk/nextjs"
-import { toast } from "sonner"
-import Image from "next/image"
-import Link from "next/link"
-import { formatDistanceToNow } from "date-fns"
+import { Heart, MessageCircle, Share2, Bookmark, Tag as TagIcon, MoreHorizontal } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
+import { toast } from "sonner";
+import Image from "next/image";
+import Link from "next/link";
+import { formatDistanceToNow } from "date-fns";
 import { ja } from "date-fns/locale";
 // Import correct types from the types file
 import { Post, Comment, ProductTag, Product, UserProfile } from "@/src/types/product"; // Use defined types
@@ -34,6 +34,7 @@ export default function PostDetailPage() {
   // Use a more descriptive type name reflecting the included product
   const [activeTag, setActiveTag] = useState<string | null>(null); // Keep as string (tag.id)
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const productsSectionRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
   useEffect(() => {
     const fetchPost = async () => {
@@ -283,7 +284,8 @@ export default function PostDetailPage() {
         {/* Image Section */}
         <div className="relative">
           <div className="sticky top-8">
-          <div className="relative aspect-[3/4] rounded-lg overflow-hidden border"> {/* Added border */}
+          {/* Ensure image container takes full width of its grid column */}
+          <div className="relative aspect-[3/4] w-full rounded-lg overflow-hidden border"> {/* Added w-full */}
             <Image
               src={post.imageUrl || "/placeholder.svg"} // Use imageUrl from provided data
               alt={post.title ?? 'Post image'} // Use title for alt text
@@ -292,25 +294,34 @@ export default function PostDetailPage() {
                 sizes="(max-width: 768px) 100vw, 50vw"
               priority // Prioritize loading the main image
             />
-            {/* Tags Overlay - Use ProductTag type */}
-            {post.tags?.map((tag: ProductTag) => ( // Use ProductTag type
-              <div
-                key={tag.id}
-                className={`absolute w-6 h-6 -ml-3 -mt-3 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-110 border-2 shadow-md ${
-                  activeTag === tag.id
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background/80 text-foreground border-primary/50"
-                }`}
-                style={{ left: `${tag.xPosition}%`, top: `${tag.yPosition}%` }} // Use xPosition, yPosition
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveTag(activeTag === tag.id ? null : tag.id);
-                }}
-                title={tag.product?.name ?? 'Product Tag'} // Use tag.product.name
-              >
-                <TagIcon className="h-3 w-3" />
-              </div>
-              ))}
+            {/* Tags Overlay - Use ProductTag type and display name */}
+            {post.tags?.map((tag: ProductTag) => {
+              const productName = tag.product?.name ?? '製品';
+              // Truncate name to approx 7 chars (adjust length as needed)
+              const displayName = productName.length > 7 ? productName.substring(0, 7) + '…' : productName;
+              return (
+                <Badge
+                  key={tag.id}
+                  variant={activeTag === tag.id ? "default" : "secondary"} // Use Badge variants
+                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all hover:scale-110 shadow-md text-xs h-auto px-2 py-0.5 whitespace-nowrap`} // Adjusted styling for badge
+                  style={{ left: `${tag.xPosition}%`, top: `${tag.yPosition}%` }} // Use xPosition, yPosition
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent default browser zoom/focus behavior
+                    e.stopPropagation();
+                    const newActiveTag = activeTag === tag.id ? null : tag.id;
+                    setActiveTag(newActiveTag);
+                    // Scroll to products section when a tag is activated
+                    if (newActiveTag) {
+                      productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                  title={productName} // Full name on hover
+                >
+                  <TagIcon className="h-3 w-3 mr-1 flex-shrink-0" /> {/* Restore icon and add margin */}
+                  {displayName}
+                </Badge>
+              );
+            })}
             </div>
           </div>
         </div>
@@ -449,8 +460,8 @@ export default function PostDetailPage() {
             </div>
           )}
 
-          {/* Product List - Use ProductTag type */}
-          <div>
+          {/* Product List - Use ProductTag type and add ref */}
+          <div ref={productsSectionRef}> {/* Add ref here */}
             <h2 className="text-lg font-semibold mb-3">使用製品</h2>
             <div className="space-y-3">
               {post.tags?.map((tag: ProductTag) => { // Use ProductTag type
@@ -458,11 +469,15 @@ export default function PostDetailPage() {
                 if (!tag.product) return null; // Skip if product data is missing
                 const product = tag.product; // Use singular product based on type
                 return (
-                  // Make the card itself the trigger for setActiveTag
+                  // Make the card itself the trigger for setActiveTag and scroll
                   <Card
                     key={tag.id}
                     className={`hover:bg-muted/50 transition-colors cursor-pointer ${activeTag === tag.id ? 'border-primary' : ''}`} // Highlight active
-                    onClick={() => setActiveTag(tag.id)}
+                    onClick={() => {
+                      setActiveTag(tag.id);
+                      // Scroll to the section when a product card is clicked
+                      productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
                   >
                     <CardContent className="p-3"> {/* Adjusted padding */}
                       <div className="flex items-center gap-3"> {/* Adjusted gap */}
