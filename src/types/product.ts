@@ -45,15 +45,15 @@ export interface Product {
   name: string;
   description: string | null;
   price: number | null;
-  imageUrl: string | null; // Changed from image_url
-  brand_id: string;
-  category_id: string;
+  imageUrl: string | null; // Matches DB schema
+  brandId: string; // Matches DB schema (camelCase FK)
+  categoryId: string; // Matches DB schema (camelCase FK)
   // Use singular relation names matching user data structure
   brand: Brand | null;
   category: Category | null;
-  // Add createdAt/updatedAt if they exist in your actual data
-  // createdAt?: string;
-  // updatedAt?: string;
+  // Add timestamps matching DB schema (snake_case)
+  created_at: string;
+  updated_at: string;
 }
 
 // --- User, Post, Comment, Tag Types (Aligned with User Data) ---

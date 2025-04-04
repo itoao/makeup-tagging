@@ -13,6 +13,26 @@ export async function GET(
     const postId = params.postId;
     const currentUserId = await getUserId();
 
+    // --- DEBUGGING START ---
+    console.log(`DEBUG: Attempting to fetch post with ID: ${postId}`);
+    const { data: allPosts, error: allPostsError } = await supabase
+      .from('Post')
+      .select('id');
+
+    if (allPostsError) {
+      console.error('DEBUG: Error fetching all post IDs:', allPostsError);
+    } else if (allPosts) {
+      console.log('DEBUG: Found post IDs in DB:', allPosts.map(p => p.id));
+      const found = allPosts.some(p => p.id === postId);
+      console.log(`DEBUG: Is requested post ID (${postId}) present in the list? ${found}`);
+      if (!found) {
+         console.log(`DEBUG: Post ID ${postId} NOT FOUND in the list fetched from DB.`);
+      }
+    } else {
+      console.log('DEBUG: No posts found at all in DB.');
+    }
+    // --- DEBUGGING END ---
+
     // 投稿を取得
     const { data: postData, error: postError } = await supabase
       .from('Post') // Revert to PascalCase
@@ -29,13 +49,12 @@ export async function GET(
         ),
         Comment ( 
           *, 
-          User ( id, username, name, image ) 
+          User ( id, username, name, image )
         ),
-        Like ( count ),
-        SavedPost ( count ) 
-      `)
+        Like ( count )
+      `) // Removed SavedPost ( count ) as the relationship is missing/causing errors
       .eq('id', postId)
-      .order('createdAt', { foreignTable: 'Comment', ascending: false }) // Revert to camelCase & PascalCase
+      .order('created_at', { foreignTable: 'Comment', ascending: false }) // Use snake_case for Comment table
       .limit(10, { foreignTable: 'Comment' }) // Revert to PascalCase
       .single();
 
@@ -44,6 +63,7 @@ export async function GET(
       if (postError && postError.code !== 'PGRST116') { // Ignore 'not found' error for now
          console.error('Error fetching post:', postError);
       }
+      // Removed debug log before returning 404
       return NextResponse.json(
         { error: '投稿が見つかりません' },
         { status: 404 }
@@ -56,10 +76,10 @@ export async function GET(
         _count: {
             likes: postData.Like[0]?.count ?? 0, // Use PascalCase
             comments: postData.Comment?.length ?? 0, // Use PascalCase
-            saved: postData.SavedPost?.[0]?.count ?? 0, // Use PascalCase
+            // saved count will be handled by the separate isSaved query below
         },
         Like: undefined, // Clean up
-        SavedPost: undefined, // Clean up
+        // SavedPost was removed from the main query
         Comment: undefined, // Clean up comments array after mapping count
         user: postData.User, // Map nested user
         User: undefined, // Clean up

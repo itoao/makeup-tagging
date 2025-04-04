@@ -9,23 +9,30 @@ import type { Product } from '@/src/types/product';
  */
 export const fetchProducts = async (): Promise<{ data: Product[] | null; error: PostgrestError | null }> => {
   const { data, error } = await supabase
-    .from('Product') // Revert to PascalCase table name
+    .from('Product')
     .select(`
-      *,
-      Brand (*), 
-      Category (*) 
+      id, 
+      name, 
+      description, 
+      price, 
+      "brandId", 
+      "categoryId", 
+      "imageUrl", 
+      created_at, 
+      updated_at,
+      brand: Brand (id, name),  // Select specific columns from Brand
+      category: Category (id, name) // Select specific columns from Category
     `);
-    // Assuming relation names match PascalCase model names
 
   if (error) {
     console.error('Error fetching products:', error);
     return { data: null, error };
   }
 
-  // TODO: Replace this assertion with proper type mapping or use generated Supabase types.
-  // The fetched data structure from Supabase needs to align with the Product type definition.
-  // Ensure the select query (`Brand (*), Category (*)`) correctly populates `brand` and `category` fields in the Product type.
-  const products: Product[] = data as Product[]; // Use Product type for assertion
+  // Type assertion: Assuming the fetched data structure now correctly matches the Product type
+  // including the nested 'brand' and 'category' objects due to the corrected select query.
+  // For robust applications, consider using Supabase generated types or Zod validation.
+  const products: Product[] = data as Product[];
 
   return { data: products, error: null };
 };

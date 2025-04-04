@@ -19,13 +19,21 @@ export async function GET(req: NextRequest) {
 
     // クエリを構築
     let query = supabase
-      .from('Product') // Revert to PascalCase
+      .from('Product')
       .select(`
-        *,
-        Brand (*),
-        Category (*)
+        id, 
+        name, 
+        description, 
+        price, 
+        brandId,
+        categoryId,
+        imageUrl,
+        created_at,
+        updated_at,
+        Brand (id, name),
+        Category (id, name)
       `, { count: 'exact' }) // Fetch count simultaneously
-      .order('createdAt', { ascending: false }) // Revert to camelCase
+      .order('created_at', { ascending: false }) // Use snake_case for ordering
       .range(from, to);
 
     // クエリパラメータに基づいてフィルタリング
@@ -104,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     // ブランドが存在するか確認
     const { data: brandData, error: brandError } = await supabase
-      .from('Brand') // Revert to PascalCase
+      .from('Brand') // Use PascalCase
       .select('id')
       .eq('id', brandId)
       .maybeSingle(); // Returns null if not found, doesn't throw error
@@ -122,7 +130,7 @@ export async function POST(req: NextRequest) {
 
     // カテゴリーが存在するか確認
     const { data: categoryData, error: categoryError } = await supabase
-      .from('Category') // Revert to PascalCase
+      .from('Category') // Use PascalCase
       .select('id')
       .eq('id', categoryId)
       .maybeSingle();
@@ -155,14 +163,14 @@ export async function POST(req: NextRequest) {
 
     // 製品を作成
     const { data: newProduct, error: insertError } = await supabase
-      .from('Product') // Revert to PascalCase
+      .from('Product') // Use PascalCase
       .insert({
         name,
         description,
         price,
-        imageUrl: imageUrl, // Revert to camelCase
-        brandId: brandId,   // Revert to camelCase
-        categoryId: categoryId, // Revert to camelCase
+        imageUrl: imageUrl, // Use camelCase (as defined in migration)
+        brandId: brandId,   // Use camelCase (as defined in migration)
+        categoryId: categoryId, // Use camelCase (as defined in migration)
       })
       .select(`
         *,
