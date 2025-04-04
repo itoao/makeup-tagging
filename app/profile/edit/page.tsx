@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useUser } from "@clerk/nextjs"
+import { UserProfile } from "@/src/types/product" // Import UserProfile type
 import { toast } from "sonner"
 
 export default function EditProfilePage() {
@@ -17,9 +18,9 @@ export default function EditProfilePage() {
   const { user, isLoaded, isSignedIn } = useUser()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [profile, setProfile] = useState<any>(null)
-  const [name, setName] = useState("")
-  const [bio, setBio] = useState("")
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [name, setName] = useState("");
+  // const [bio, setBio] = useState(""); // Removed bio state
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -38,12 +39,12 @@ export default function EditProfilePage() {
         }
         
         if (data) {
-          setProfile(data)
-          setName(data.name || "")
-          setBio(data.bio || "")
+          setProfile(data);
+          setName(data.name || "");
+          // setBio(data.bio || ""); // Removed setting bio
         }
       } catch (err) {
-        toast.error("プロフィールの読み込み中にエラーが発生しました")
+        toast.error("プロフィールの読み込み中にエラーが発生しました");
       } finally {
         setLoading(false)
       }
@@ -58,11 +59,12 @@ export default function EditProfilePage() {
     e.preventDefault()
     
     try {
-      setSaving(true)
-      const { data, error } = await userApi.updateProfile({ name, bio })
-      
+      setSaving(true);
+      // Remove bio from the update payload
+      const { data, error } = await userApi.updateProfile({ name });
+
       if (error) {
-        toast.error("プロフィールの更新に失敗しました")
+        toast.error("プロフィールの更新に失敗しました");
         return
       }
       
@@ -125,7 +127,9 @@ export default function EditProfilePage() {
                 placeholder="あなたの名前"
               />
             </div>
-            
+
+            {/* Removed bio Textarea */}
+            {/*
             <div className="space-y-2">
               <Label htmlFor="bio">自己紹介</Label>
               <Textarea
@@ -136,8 +140,9 @@ export default function EditProfilePage() {
                 rows={4}
               />
             </div>
+            */}
           </CardContent>
-          
+
           <CardFooter className="flex justify-between">
             <Button
               type="button"

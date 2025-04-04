@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, Loader2 } from "lucide-react"
 import { productApi } from "@/lib/api"
+import { Product } from "@/src/types/product" // Import Product type
 import Image from "next/image"
 
 interface ProductTagProps {
@@ -16,18 +17,19 @@ interface ProductTagProps {
 
 export function ProductTag({ onSelect }: ProductTagProps) {
   const [searchTerm, setSearchTerm] = useState("")
-  const [results, setResults] = useState<any[]>([])
+  const [results, setResults] = useState<Product[]>([]) // Use Product[] type
   const [loading, setLoading] = useState(false)
-  
+
   // Fetch products on initial load
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true)
         const { data, error } = await productApi.getProducts({ limit: 10 })
-        
-        if (!error && data) {
-          setResults(data.products)
+
+        // Access products via data.data
+        if (!error && data && data.data) {
+          setResults(data.data)
         }
       } catch (err) {
         console.error("Error fetching products:", err)
@@ -49,9 +51,10 @@ export function ProductTag({ onSelect }: ProductTagProps) {
       try {
         setLoading(true)
         const { data, error } = await productApi.getProducts({ limit: 10 })
-        
-        if (!error && data) {
-          setResults(data.products)
+
+        // Access products via data.data
+        if (!error && data && data.data) {
+          setResults(data.data)
         }
       } catch (err) {
         console.error("Error fetching products:", err)
@@ -63,9 +66,10 @@ export function ProductTag({ onSelect }: ProductTagProps) {
       try {
         setLoading(true)
         const { data, error } = await productApi.getProducts({ name: term, limit: 10 })
-        
-        if (!error && data) {
-          setResults(data.products)
+
+        // Access products via data.data
+        if (!error && data && data.data) {
+          setResults(data.data)
         }
       } catch (err) {
         console.error("Error searching products:", err)
@@ -109,17 +113,18 @@ export function ProductTag({ onSelect }: ProductTagProps) {
             >
               <CardContent className="p-3 flex items-center gap-3">
                 <div className="w-10 h-10 relative rounded overflow-hidden">
-                  <Image 
-                    src={product.imageUrl || "/placeholder.svg"} 
-                    alt={product.name} 
-                    fill 
-                    className="object-cover" 
+                  <Image
+                    src={product.imageUrl || "/placeholder.svg"} // Use imageUrl
+                    alt={product.name}
+                    fill
+                    className="object-cover"
                   />
                 </div>
                 <div>
                   <div className="font-medium text-sm">{product.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {product.brand.name} • {product.category.name}
+                    {/* Add null checks */}
+                    {product.brand?.name ?? 'Unknown Brand'} • {product.category?.name ?? 'Unknown Category'}
                   </div>
                 </div>
               </CardContent>

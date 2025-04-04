@@ -9,13 +9,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useUser } from "@clerk/nextjs"
+import { UserProfile, Post } from "@/src/types/product" // Import types
 import Link from "next/link"
 
 export default function UserProfilePage() {
   const { username } = useParams() as { username: string }
   const { user: currentUser } = useUser()
-  const [profile, setProfile] = useState<any>(null)
-  const [posts, setPosts] = useState<any[]>([])
+  const [profile, setProfile] = useState<UserProfile | null>(null) // Use UserProfile type
+  const [posts, setPosts] = useState<Post[]>([]) // Use Post[] type
   const [loading, setLoading] = useState(true)
   const [postsLoading, setPostsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,13 +33,14 @@ export default function UserProfilePage() {
           setError(error)
           return
         }
-        
+
         if (data) {
-          setProfile(data)
-          setIsFollowing(data.isFollowing)
+          setProfile(data);
+          // isFollowing is managed by local state, not fetched profile data based on current types
+          // setIsFollowing(data.isFollowing ?? false); // Remove this line
         }
       } catch (err) {
-        setError("プロフィールの読み込み中にエラーが発生しました")
+        setError("プロフィールの読み込み中にエラーが発生しました");
       } finally {
         setLoading(false)
       }
@@ -59,9 +61,10 @@ export default function UserProfilePage() {
           console.error("Error fetching posts:", error)
           return
         }
-        
-        if (data) {
-          setPosts(data.posts)
+
+        // Access posts via data.data
+        if (data && data.data) {
+          setPosts(data.data)
         }
       } catch (err) {
         console.error("Error fetching posts:", err)
@@ -84,17 +87,20 @@ export default function UserProfilePage() {
         await userApi.followUser(username)
         setIsFollowing(true)
       }
-      
-      // Update follower count
-      setProfile((prev: any) => ({
-        ...prev,
-        _count: {
-          ...prev._count,
-          followers: isFollowing 
-            ? prev._count.followers - 1 
-            : prev._count.followers + 1
-        }
-      }))
+
+      // Update follower count - _count is removed from UserProfile, so this update is no longer possible here.
+      // Consider fetching updated profile data if follower count needs to be displayed accurately after follow/unfollow.
+      // setProfile(prev => {
+      //   if (!prev) return null;
+      //   const currentFollowers = prev._count?.followers ?? 0;
+      //   return {
+      //     ...prev,
+      //     _count: {
+      //       ...(prev._count ?? {}), // Ensure _count exists
+      //       followers: isFollowing ? Math.max(0, currentFollowers - 1) : currentFollowers + 1,
+      //     },
+      //   };
+      // });
     } catch (err) {
       console.error("Error following/unfollowing user:", err)
     }
@@ -128,19 +134,21 @@ export default function UserProfilePage() {
           <Link href="/">ホームに戻る</Link>
         </Button>
       </div>
-    )
+    );
   }
 
-  const isCurrentUser = profile.isCurrentUser
+  // Calculate isCurrentUser locally based on Clerk's currentUser and fetched profile id
+  const isCurrentUser = currentUser?.id === profile?.id; // Use profile.id
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row gap-6 items-start mb-8">
         <Avatar className="h-24 w-24">
+          {/* Use profile.image based on updated UserProfile type */}
           <AvatarImage src={profile.image || "/placeholder-user.jpg"} alt={profile.username} />
           <AvatarFallback>{profile.username[0].toUpperCase()}</AvatarFallback>
         </Avatar>
-        
+
         <div className="flex-1">
           <div className="flex flex-col md:flex-row md:items-center gap-4 mb-4">
             <h1 className="text-2xl font-bold">{profile.name || profile.username}</h1>
@@ -158,26 +166,30 @@ export default function UserProfilePage() {
               </Button>
             )}
           </div>
-          
-          <p className="text-muted-foreground mb-4">{profile.bio || "自己紹介はまだありません"}</p>
-          
+
+          {/* bio is removed from UserProfile type */}
+          {/* <p className="text-muted-foreground mb-4">{profile.bio || "自己紹介はまだありません"}</p> */}
+
+          {/* _count is removed from UserProfile type, remove stats display */}
+          {/*
           <div className="flex gap-6">
             <div className="text-center">
-              <div className="font-medium">{profile._count.posts}</div>
+              <div className="font-medium">{profile._count?.posts ?? 0}</div>
               <div className="text-sm text-muted-foreground">投稿</div>
             </div>
             <div className="text-center">
-              <div className="font-medium">{profile._count.followers}</div>
+              <div className="font-medium">{profile._count?.followers ?? 0}</div>
               <div className="text-sm text-muted-foreground">フォロワー</div>
             </div>
             <div className="text-center">
-              <div className="font-medium">{profile._count.following}</div>
+              <div className="font-medium">{profile._count?.following ?? 0}</div>
               <div className="text-sm text-muted-foreground">フォロー中</div>
             </div>
           </div>
+          */}
         </div>
       </div>
-      
+
       <Tabs defaultValue="posts" className="mb-8" onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3 md:w-[400px]">
           <TabsTrigger value="posts">投稿</TabsTrigger>
@@ -203,12 +215,18 @@ export default function UserProfilePage() {
               {posts.map((post) => (
                 <MakeupPost
                   key={post.id}
-                  username={post.user.username}
+                  // Use post.user based on updated Post type
+                  username={post.user?.username ?? 'unknown'}
+                  // Use post.imageUrl based on updated Post type
                   imageUrl={post.imageUrl}
-                  title={post.title}
-                  likes={post._count.likes}
-                  comments={post._count.comments}
-                  productCount={post.tags.length}
+                  // Use post.title based on updated Post type
+                  title={post.title ?? 'Untitled'}
+                  // Use post._count.likes based on updated Post type
+                  likes={post._count?.likes ?? 0}
+                  // Use post._count.comments based on updated Post type
+                  comments={post._count?.comments ?? 0}
+                  productCount={post.tags?.length ?? 0}
+                  postId={post.id}
                 />
               ))}
             </div>

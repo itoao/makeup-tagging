@@ -9,43 +9,53 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Heart, MessageCircle, Share2, Bookmark, Tag, MoreHorizontal } from "lucide-react"
+// Import Tag icon with an alias to avoid naming conflict
+import { Heart, MessageCircle, Share2, Bookmark, Tag as TagIcon, MoreHorizontal } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import { toast } from "sonner"
 import Image from "next/image"
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
-import { ja } from "date-fns/locale"
+import { ja } from "date-fns/locale";
+// Import correct types from the types file
+import { Post, Comment, ProductTag, Product, UserProfile } from "@/src/types/product"; // Use defined types
 
 export default function PostDetailPage() {
-  const { id } = useParams() as { id: string }
-  const router = useRouter()
-  const { isSignedIn } = useUser()
-  const [post, setPost] = useState<any>(null)
-  const [comments, setComments] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [commentText, setCommentText] = useState("")
-  const [submitting, setSubmitting] = useState(false)
-  const [activeTag, setActiveTag] = useState<number | null>(null)
-  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+  const { id } = useParams() as { id: string };
+  const router = useRouter();
+  const { isSignedIn, user: currentUser } = useUser();
+  // Use the correct Post type
+  const [post, setPost] = useState<Post | null>(null);
+  // Use the correct Comment type
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [commentText, setCommentText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  // Use a more descriptive type name reflecting the included product
+  const [activeTag, setActiveTag] = useState<string | null>(null); // Keep as string (tag.id)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const fetchPost = async () => {
       try {
         setLoading(true)
         const { data, error } = await postApi.getPost(id)
-        
+
         if (error) {
           toast.error("投稿の読み込みに失敗しました")
-          return
+          return;
         }
-        
+
         if (data) {
-          setPost(data)
-          setComments(data.comments)
+          console.log("Fetched post data:", JSON.stringify(data, null, 2)); // Log the actual fetched data structure
+          // Cast fetched data to the Post type
+          setPost(data as Post);
+          // Cast comments to the Comment[] type
+          setComments((data.comments as Comment[]) ?? []); // Use nullish coalescing and type assertion
         }
       } catch (err) {
-        toast.error("投稿の読み込み中にエラーが発生しました")
+        console.error("Fetch post error:", err);
+        toast.error("投稿の読み込み中にエラーが発生しました");
       } finally {
         setLoading(false)
       }
@@ -59,24 +69,32 @@ export default function PostDetailPage() {
       toast.error("いいねするにはログインが必要です")
       return
     }
+    if (!post) return; // Ensure post is not null
 
     try {
-      if (post.isLiked) {
+      if (post.isLiked) { // Assuming isLiked is part of the fetched post data
         await postApi.unlikePost(id)
       } else {
         await postApi.likePost(id)
       }
-      
-      // Update post state
-      setPost({
-        ...post,
-        isLiked: !post.isLiked,
-        _count: {
-          ...post._count,
-          likes: post.isLiked ? post._count.likes - 1 : post._count.likes + 1
-        }
-      })
+
+      // Update post state with explicit type for prevPost and safe _count update
+      setPost((prevPost: Post | null) => {
+        if (!prevPost) return null;
+        const currentIsLiked = prevPost.isLiked ?? false;
+        const currentLikes = prevPost._count?.likes ?? 0;
+        const currentComments = prevPost._count?.comments ?? 0; // Ensure comments count is preserved
+        return {
+          ...prevPost,
+          isLiked: !currentIsLiked,
+          _count: { // Ensure both counts are present
+            likes: currentIsLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1,
+            comments: currentComments, // Keep existing comments count
+          },
+        };
+      });
     } catch (err) {
+      console.error("Like/Unlike error:", err); // Log the actual error
       toast.error("操作に失敗しました")
     }
   }
@@ -86,18 +104,31 @@ export default function PostDetailPage() {
       toast.error("保存するにはログインが必要です")
       return
     }
+    if (!post) return;
 
+    // TODO: Implement save functionality via API
     toast.info("この機能は現在開発中です")
+    // Example state update (assuming isSaved property exists)
+    // setPost(prevPost => {
+    //   if (!prevPost) return null;
+    //   return {
+    //     ...prevPost,
+    //     isSaved: !prevPost.isSaved,
+    //     // Optionally update save count if available
+    //   };
+    // });
   }
 
   const handleShare = () => {
+    if (!post) return;
     if (navigator.share) {
       navigator.share({
-        title: post.title,
-        text: post.description,
+        title: post.title ?? 'Check out this post!', // Use title
+        text: post.description ?? '', // Use description
         url: window.location.href,
       }).catch(() => {
         // Fallback if share fails
+        console.warn("Share API failed, falling back to clipboard.");
         navigator.clipboard.writeText(window.location.href)
         toast.success("リンクをコピーしました")
       })
@@ -110,40 +141,50 @@ export default function PostDetailPage() {
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!isSignedIn) {
       toast.error("コメントするにはログインが必要です")
       return
     }
-    
+
     if (!commentText.trim()) {
       toast.error("コメントを入力してください")
       return
     }
-    
+    if (!post) return; // Ensure post is not null
+
     try {
       setSubmitting(true)
+      // Assuming addComment returns the created Comment object
       const { data, error } = await postApi.addComment(id, commentText)
-      
-      if (error) {
-        toast.error("コメントの投稿に失敗しました")
-        return
+
+      if (error || !data) {
+        console.error("Add comment error:", error); // Log the actual error
+        toast.error("コメントの投稿に失敗しました");
+        return;
       }
-      
-      setComments([data, ...comments])
-      setCommentText("")
-      
-      // Update comment count
-      setPost({
-        ...post,
-        _count: {
-          ...post._count,
-          comments: post._count.comments + 1
-        }
-      })
-      
-      toast.success("コメントを投稿しました")
+
+      // Add the new comment (cast to Comment type)
+      setComments(prevComments => [data as Comment, ...prevComments]);
+      setCommentText("");
+
+      // Update comment count with explicit type for prevPost and safe _count update
+      setPost((prevPost: Post | null) => {
+        if (!prevPost) return null;
+        const currentLikes = prevPost._count?.likes ?? 0; // Ensure likes count is preserved
+        const currentComments = prevPost._count?.comments ?? 0;
+        return {
+          ...prevPost,
+          _count: { // Ensure both counts are present
+            likes: currentLikes, // Keep existing likes count
+            comments: currentComments + 1,
+          },
+        };
+      });
+
+      toast.success("コメントを投稿しました");
     } catch (err) {
+      console.error("Submit comment error:", err); // Log the actual error
       toast.error("コメントの投稿中にエラーが発生しました")
     } finally {
       setSubmitting(false)
@@ -151,33 +192,42 @@ export default function PostDetailPage() {
   }
 
   const handleDeleteComment = async (commentId: string) => {
+    if (!post) return; // Ensure post is not null
     try {
       const { error } = await commentApi.deleteComment(commentId)
-      
+
       if (error) {
-        toast.error("コメントの削除に失敗しました")
-        return
+        console.error("Delete comment error:", error); // Log the actual error
+        toast.error("コメントの削除に失敗しました");
+        return;
       }
-      
+
       // Remove comment from state
-      setComments(comments.filter(comment => comment.id !== commentId))
-      
-      // Update comment count
-      setPost({
-        ...post,
-        _count: {
-          ...post._count,
-          comments: post._count.comments - 1
-        }
-      })
-      
-      toast.success("コメントを削除しました")
+      setComments(prevComments => prevComments.filter(comment => comment.id !== commentId));
+
+      // Update comment count with explicit type for prevPost and safe _count update
+      setPost((prevPost: Post | null) => {
+        if (!prevPost) return null;
+        const currentLikes = prevPost._count?.likes ?? 0; // Ensure likes count is preserved
+        const currentComments = prevPost._count?.comments ?? 0;
+        return {
+          ...prevPost,
+          _count: { // Ensure both counts are present
+            likes: currentLikes, // Keep existing likes count
+            comments: Math.max(0, currentComments - 1),
+          },
+        };
+      });
+
+      toast.success("コメントを削除しました");
     } catch (err) {
+      console.error("Delete comment error:", err); // Log the actual error
       toast.error("コメントの削除中にエラーが発生しました")
     }
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return "日付不明";
     try {
       return formatDistanceToNow(new Date(dateString), { addSuffix: true, locale: ja })
     } catch (e) {
@@ -188,6 +238,7 @@ export default function PostDetailPage() {
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-5xl">
+        {/* Skeleton remains the same */}
         <div className="grid md:grid-cols-2 gap-8">
           <Skeleton className="aspect-[3/4] rounded-lg" />
           <div className="space-y-4">
@@ -220,183 +271,236 @@ export default function PostDetailPage() {
           <Link href="/">ホームに戻る</Link>
         </Button>
       </div>
-    )
+    );
   }
+
+  // Determine if the current user is the owner using post.userId
+  const isOwner = currentUser?.id === post.userId; // Use post.userId
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
       <div className="grid md:grid-cols-2 gap-8">
+        {/* Image Section */}
         <div className="relative">
           <div className="sticky top-8">
-            <div className="relative aspect-[3/4] rounded-lg overflow-hidden">
-              <Image 
-                src={post.imageUrl || "/placeholder.svg"} 
-                alt={post.title} 
-                fill 
-                className="object-cover"
+          <div className="relative aspect-[3/4] rounded-lg overflow-hidden border"> {/* Added border */}
+            <Image
+              src={post.imageUrl || "/placeholder.svg"} // Use imageUrl from provided data
+              alt={post.title ?? 'Post image'} // Use title for alt text
+              fill
+              className="object-cover"
                 sizes="(max-width: 768px) 100vw, 50vw"
-              />
-
-              {post.tags.map((tag: any) => (
-                <div
-                  key={tag.id}
-                  className={`absolute w-6 h-6 -ml-3 -mt-3 rounded-full flex items-center justify-center cursor-pointer ${
-                    activeTag === tag.id ? "bg-primary text-primary-foreground" : "bg-background text-foreground"
-                  } border-2 border-background shadow-sm`}
-                  style={{ left: `${tag.xPosition}%`, top: `${tag.yPosition}%` }}
-                  onClick={() => setActiveTag(activeTag === tag.id ? null : tag.id)}
-                >
-                  <Tag className="h-3 w-3" />
-                </div>
+              priority // Prioritize loading the main image
+            />
+            {/* Tags Overlay - Use ProductTag type */}
+            {post.tags?.map((tag: ProductTag) => ( // Use ProductTag type
+              <div
+                key={tag.id}
+                className={`absolute w-6 h-6 -ml-3 -mt-3 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-110 border-2 shadow-md ${
+                  activeTag === tag.id
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background/80 text-foreground border-primary/50"
+                }`}
+                style={{ left: `${tag.xPosition}%`, top: `${tag.yPosition}%` }} // Use xPosition, yPosition
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveTag(activeTag === tag.id ? null : tag.id);
+                }}
+                title={tag.product?.name ?? 'Product Tag'} // Use tag.product.name
+              >
+                <TagIcon className="h-3 w-3" />
+              </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center gap-3 mb-6">
-            <Link href={`/user/${post.user.username}`}>
+        {/* Details Section */}
+        <div className="space-y-6">
+          {/* Author Info - Use post.user */}
+          <div className="flex items-center gap-3">
+            <Link href={`/user/${post.user?.username ?? '#'}`}>
               <Avatar>
-                <AvatarImage src={post.user.image || "/placeholder-user.jpg"} alt={post.user.username} />
-                <AvatarFallback>{post.user.username[0].toUpperCase()}</AvatarFallback>
+                {/* Use post.user.image */}
+                <AvatarImage src={post.user?.image || "/placeholder-user.jpg"} alt={post.user?.username ?? 'U'} />
+                <AvatarFallback>{post.user?.username?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
               </Avatar>
             </Link>
-            <div>
-              <Link href={`/user/${post.user.username}`} className="font-medium hover:underline">
-                {post.user.name || post.user.username}
+            <div className="flex-1">
+              <Link href={`/user/${post.user?.username ?? '#'}`} className="font-medium hover:underline">
+                {/* Use post.user.name or username */}
+                {post.user?.name || post.user?.username}
               </Link>
-              <div className="text-sm text-muted-foreground">{formatDate(post.createdAt)}</div>
+              <div className="text-sm text-muted-foreground">{formatDate(post.createdAt)}</div> {/* Use post.createdAt */}
             </div>
-            {post.isOwner && (
-              <Button variant="ghost" size="icon" className="ml-auto" asChild>
-                <Link href={`/post/${id}/edit`}>
+            {isOwner && (
+              <Button variant="ghost" size="icon" className="ml-auto">
+                {/* TODO: Implement edit functionality */}
+                {/* <Link href={`/post/${id}/edit`}> */}
                   <MoreHorizontal className="h-4 w-4" />
-                </Link>
+                {/* </Link> */}
               </Button>
             )}
           </div>
 
-          <h1 className="text-2xl font-bold mb-3">{post.title}</h1>
-          <p className="text-muted-foreground mb-6">{post.description}</p>
+          {/* Post Title & Description */}
+          <h1 className="text-2xl font-bold">{post.title ?? 'Untitled Post'}</h1>
+          {post.description && (
+            <p className="text-muted-foreground">{post.description}</p>
+          )}
 
-          <div className="flex items-center gap-4 mb-8">
-            <Button 
-              variant={post.isLiked ? "default" : "outline"} 
-              size="sm" 
+          {/* Action Buttons - Use _count and remove initial isLiked/isSaved dependency */}
+          <div className="flex items-center gap-2 md:gap-4"> {/* Adjusted gap */}
+            <Button
+              // variant depends on local isLiked state after interaction
+              variant={post.isLiked ? "default" : "outline"}
+              size="sm"
               className="flex items-center gap-1"
               onClick={handleLike}
+              disabled={!isSignedIn} // Disable if not signed in
             >
-              <Heart className={`h-4 w-4 ${post.isLiked ? "fill-current" : ""}`} />
-              <span>{post._count.likes}</span>
+              {/* Always show Heart icon, fill based on local isLiked state */}
+              <Heart className={`h-4 w-4 ${post.isLiked ? "fill-current text-red-500" : ""}`} />
+              {/* Use _count.likes */}
+              <span>{post._count?.likes ?? 0}</span>
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="flex items-center gap-1"
               onClick={() => commentInputRef.current?.focus()}
             >
               <MessageCircle className="h-4 w-4" />
-              <span>{post._count.comments}</span>
+              {/* Use _count.comments */}
+              <span>{post._count?.comments ?? 0}</span>
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="flex items-center gap-1"
               onClick={handleShare}
             >
               <Share2 className="h-4 w-4" />
-              <span>シェア</span>
+              <span className="hidden sm:inline">シェア</span> {/* Hide text on small screens */}
             </Button>
-            <Button 
-              variant={post.isSaved ? "default" : "outline"} 
-              size="sm" 
+            <Button
+              // variant depends on local isSaved state after interaction (if implemented)
+              variant={"outline"} // Default to outline as isSaved isn't fetched
+              size="sm"
               className="flex items-center gap-1 ml-auto"
               onClick={handleSave}
+              disabled={!isSignedIn} // Disable if not signed in
             >
+              {/* Always show Bookmark icon */}
               <Bookmark className={`h-4 w-4 ${post.isSaved ? "fill-current" : ""}`} />
-              <span>保存</span>
+              <span className="hidden sm:inline">保存</span> {/* Hide text on small screens */}
             </Button>
           </div>
 
+          {/* Active Tag Info - Use ProductTag type */}
           {activeTag !== null && (
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">タグ情報</h2>
-              {post.tags.map((tag: any) => {
-                if (tag.id === activeTag) {
+            <div className="animate-in fade-in duration-300 border rounded-lg">
+              {/* Removed h2 title, info shown directly in card */}
+              {post.tags?.map((tag: ProductTag) => { // Use ProductTag type
+                // Use tag.product
+                if (tag.id === activeTag && tag.product) {
+                  const product = tag.product; // Use singular product based on type
                   return (
-                    <Card key={tag.id}>
+                    <Card key={tag.id} className="border-0 shadow-none">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-16 h-16 relative rounded overflow-hidden">
+                          <div className="w-16 h-16 relative rounded overflow-hidden flex-shrink-0 border"> {/* Added border */}
                             <Image
-                              src={tag.product.imageUrl || "/placeholder.svg"}
-                              alt={tag.product.name}
+                              // Use product.imageUrl from Product type
+                              src={product.imageUrl || "/placeholder.svg"}
+                              alt={product.name}
                               fill
                               className="object-cover"
+                              sizes="64px"
                             />
                           </div>
-                          <div className="flex-1">
-                            <Badge variant="outline" className="mb-1">
-                              {tag.product.category.name}
-                            </Badge>
-                            <h3 className="font-medium">{tag.product.name}</h3>
-                            <p className="text-sm text-muted-foreground">{tag.product.brand.name}</p>
-                          </div>
-                          <div className="text-right">
-                            {tag.product.price && (
-                              <div className="font-medium">¥{tag.product.price.toLocaleString()}</div>
+                          <div className="flex-1 min-w-0"> {/* Allow text to wrap */}
+                            {/* Use product.category from Product type */}
+                            {product.category && (
+                              <Badge variant="outline" className="mb-1">
+                                {product.category.name}
+                              </Badge>
                             )}
-                            <Button size="sm" className="mt-1">
-                              詳細
+                            <h3 className="font-medium truncate">{product.name}</h3>
+                            {/* Use product.brand from Product type */}
+                            <p className="text-sm text-muted-foreground truncate">{product.brand?.name ?? 'ブランド未設定'}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            {product.price && (
+                              <div className="font-medium">¥{product.price.toLocaleString()}</div>
+                            )}
+                            {/* TODO: Link to product details page */}
+                            <Button size="sm" className="mt-1 h-auto p-0" variant="link" asChild>
+                              <Link href={`/products?id=${product.id}`}>詳細を見る</Link>
                             </Button>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
-                  )
+                  );
                 }
-                return null
+                return null;
               })}
             </div>
           )}
 
+          {/* Product List - Use ProductTag type */}
           <div>
-            <h2 className="text-xl font-semibold mb-4">使用製品</h2>
-            <div className="space-y-4 mb-8">
-              {post.tags.map((tag: any) => (
-                <Card key={tag.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setActiveTag(tag.id)}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 relative rounded overflow-hidden">
-                        <Image
-                          src={tag.product.imageUrl || "/placeholder.svg"}
-                          alt={tag.product.name}
-                          fill
-                          className="object-cover"
-                        />
+            <h2 className="text-lg font-semibold mb-3">使用製品</h2>
+            <div className="space-y-3">
+              {post.tags?.map((tag: ProductTag) => { // Use ProductTag type
+                // Use tag.product
+                if (!tag.product) return null; // Skip if product data is missing
+                const product = tag.product; // Use singular product based on type
+                return (
+                  // Make the card itself the trigger for setActiveTag
+                  <Card
+                    key={tag.id}
+                    className={`hover:bg-muted/50 transition-colors cursor-pointer ${activeTag === tag.id ? 'border-primary' : ''}`} // Highlight active
+                    onClick={() => setActiveTag(tag.id)}
+                  >
+                    <CardContent className="p-3"> {/* Adjusted padding */}
+                      <div className="flex items-center gap-3"> {/* Adjusted gap */}
+                        <div className="w-12 h-12 relative rounded overflow-hidden flex-shrink-0 border">
+                          <Image
+                            // Use product.imageUrl from Product type
+                            src={product.imageUrl || "/placeholder.svg"}
+                            alt={product.name}
+                            fill
+                            className="object-cover"
+                            sizes="48px"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1"> {/* Allow text to wrap */}
+                          <h3 className="font-medium truncate text-sm">{product.name}</h3>
+                          {/* Use product.brand from Product type */}
+                          <p className="text-xs text-muted-foreground truncate">{product.brand?.name ?? 'ブランド未設定'}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-medium">{tag.product.name}</h3>
-                        <p className="text-sm text-muted-foreground">{tag.product.brand.name}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {post.tags.length === 0 && (
-                <p className="text-muted-foreground text-center py-4">
-                  タグされた製品はありません
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {post.tags?.length === 0 && (
+                <p className="text-muted-foreground text-sm text-center py-4">
+                  タグ付けされた製品はありません
                 </p>
               )}
             </div>
           </div>
 
+          {/* Comments Section */}
           <div>
-            <h2 className="text-xl font-semibold mb-4">コメント</h2>
-            
+            {/* Use _count.comments */}
+            <h2 className="text-lg font-semibold mb-3">コメント ({post._count?.comments ?? 0})</h2>
+            {/* Comment Form */}
             {isSignedIn && (
-              <form onSubmit={handleSubmitComment} className="mb-6">
+              <form onSubmit={handleSubmitComment} className="mb-4"> {/* Adjusted margin */}
                 <Textarea
                   ref={commentInputRef}
                   placeholder="コメントを追加..."
@@ -412,41 +516,47 @@ export default function PostDetailPage() {
                 </div>
               </form>
             )}
-            
+            {/* Comment List */}
             <div className="space-y-4">
               {comments.length > 0 ? (
-                comments.map((comment) => (
+                // Use Comment type
+                comments.map((comment: Comment) => ( // Use Comment type
                   <div key={comment.id} className="flex gap-3">
-                    <Link href={`/user/${comment.user.username}`}>
+                    {/* Use comment.user relation from Comment type */}
+                    <Link href={`/user/${comment.user?.username ?? '#'}`}>
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={comment.user.image || "/placeholder-user.jpg"} alt={comment.user.username} />
-                        <AvatarFallback>{comment.user.username[0].toUpperCase()}</AvatarFallback>
+                        {/* Use comment.user.image */}
+                        <AvatarImage src={comment.user?.image || "/placeholder-user.jpg"} alt={comment.user?.username ?? 'U'} />
+                        <AvatarFallback>{comment.user?.username?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
                       </Avatar>
                     </Link>
                     <div className="flex-1">
                       <div className="flex items-baseline gap-2">
-                        <Link href={`/user/${comment.user.username}`} className="font-medium hover:underline">
-                          {comment.user.name || comment.user.username}
+                        <Link href={`/user/${comment.user?.username ?? '#'}`} className="font-medium hover:underline text-sm">
+                          {/* Use comment.user.name or username */}
+                          {comment.user?.name || comment.user?.username}
                         </Link>
+                        {/* Use comment.createdAt */}
                         <span className="text-xs text-muted-foreground">{formatDate(comment.createdAt)}</span>
                       </div>
-                      <p className="text-sm mt-1">{comment.content}</p>
+                      <p className="text-sm mt-1 whitespace-pre-wrap">{comment.content}</p>
                     </div>
-                    {post.isOwner || comment.user.id === post.user.id && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-8 w-8 p-0" 
+                    {/* Check if current user is post owner OR comment owner */}
+                    {(isOwner || currentUser?.id === comment.userId) && ( // Use comment.userId
+                      <Button
+                        variant="ghost"
+                        size="icon" // Make it an icon button
+                        className="h-8 w-8 p-0"
                         onClick={() => handleDeleteComment(comment.id)}
                       >
                         <span className="sr-only">Delete</span>
-                        <MoreHorizontal className="h-4 w-4" />
+                        <MoreHorizontal className="h-4 w-4" /> {/* Consider using Trash2 icon */}
                       </Button>
                     )}
                   </div>
                 ))
               ) : (
-                <p className="text-muted-foreground text-center py-4">
+                <p className="text-muted-foreground text-sm text-center py-4">
                   まだコメントはありません。最初のコメントを残しましょう！
                 </p>
               )}
@@ -455,5 +565,5 @@ export default function PostDetailPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

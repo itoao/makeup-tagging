@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
 import { uploadImage, deleteImage } from '@/lib/supabase-storage';
+// TODO: Import generated Supabase types if available
 
 // ブランド一覧を取得
 export async function GET(req: NextRequest) {
@@ -11,40 +12,45 @@ export async function GET(req: NextRequest) {
     const limit = Number(searchParams.get('limit') || '50');
     const page = Number(searchParams.get('page') || '1');
     const skip = (page - 1) * limit;
+    const from = skip;
+    const to = skip + limit - 1;
+
+    // クエリを構築
+    let query = supabase
+      .from('Brand') // Revert to PascalCase
+      .select('*', { count: 'exact' }) // Fetch all fields and count
+      .order('name', { ascending: true })
+      .range(from, to);
 
     // クエリパラメータに基づいてフィルタリング
-    const where = name
-      ? {
-          name: {
-            contains: name,
-            mode: 'insensitive' as const,
-          },
-        }
-      : {};
+    if (name) {
+      query = query.ilike('name', `%${name}%`);
+    }
 
-    // ブランド一覧を取得
-    const brands = await prisma.brand.findMany({
-      where,
-      orderBy: {
-        name: 'asc',
-      },
-      skip,
-      take: limit,
-    });
+    // クエリを実行
+    const { data: brands, error, count: total } = await query;
 
-    // 総ブランド数を取得
-    const total = await prisma.brand.count({ where });
+    if (error) {
+      console.error('Error fetching brands:', error);
+      return NextResponse.json(
+        { error: 'ブランド一覧の取得に失敗しました' },
+        { status: 500 }
+      );
+    }
+
+    const totalCount = total ?? 0;
 
     return NextResponse.json({
-      brands,
+      brands: brands || [],
       pagination: {
-        total,
+        total: totalCount,
         page,
         limit,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(totalCount / limit),
       },
     });
   } catch (error) {
+    // Keep existing error handling
     console.error('Error fetching brands:', error);
     return NextResponse.json(
       { error: 'ブランド一覧の取得に失敗しました' },
@@ -71,21 +77,27 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     // 同名のブランドが存在するか確認
-    const existingBrand = await prisma.brand.findUnique({
-      where: { name },
-    });
-    
-    if (existingBrand) {
+    const { data: existingBrandData, error: checkError } = await supabase
+      .from('Brand') // Revert to PascalCase
+      .select('id')
+      .eq('name', name)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error("Error checking existing brand:", checkError);
+      return NextResponse.json({ error: 'ブランド存在確認中にエラーが発生しました' }, { status: 500 });
+    }
+    if (existingBrandData) {
       return NextResponse.json(
         { error: '同名のブランドが既に存在します' },
         { status: 400 }
       );
     }
-    
+
     // ロゴをアップロード（存在する場合）
-    let logoUrl = null;
+    let logoUrl: string | null = null; // Explicitly type
     if (logo) {
       const uploadResult = await uploadImage(logo, 'brands');
       
@@ -98,17 +110,32 @@ export async function POST(req: NextRequest) {
       
       logoUrl = uploadResult.url;
     }
-    
+
     // ブランドを作成
-    const brand = await prisma.brand.create({
-      data: {
+    const { data: newBrand, error: insertError } = await supabase
+      .from('Brand') // Revert to PascalCase
+      .insert({
         name,
-        logoUrl,
-      },
-    });
-    
-    return NextResponse.json(brand);
+        logoUrl: logoUrl, // Revert to camelCase
+      })
+      .select() // Select the created brand data
+      .single(); // Expect a single row
+
+    if (insertError) {
+       // Handle potential unique constraint violation for name
+       if (insertError.code === '23505') { 
+         return NextResponse.json(
+           { error: '同名のブランドが既に存在します' },
+           { status: 400 }
+         );
+       }
+      console.error('Error creating brand:', insertError);
+      return NextResponse.json({ error: 'ブランドの作成に失敗しました' }, { status: 500 });
+    }
+
+    return NextResponse.json(newBrand);
   } catch (error) {
+    // Keep existing error handling
     console.error('Error creating brand:', error);
     
     if (error instanceof Error && error.message === '認証が必要です') {

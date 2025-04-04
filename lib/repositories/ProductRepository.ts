@@ -1,6 +1,7 @@
-import supabase from '@/lib/supabase';
+import supabase from '../supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { Product, ProductWithRelations } from '@/src/types/product';
+// Import only the existing Product type
+import type { Product } from '@/src/types/product';
 
 /**
  * Supabaseから全商品を取得する関数 (ブランドとカテゴリ情報を含む)
@@ -8,22 +9,23 @@ import type { Product, ProductWithRelations } from '@/src/types/product';
  */
 export const fetchProducts = async (): Promise<{ data: Product[] | null; error: PostgrestError | null }> => {
   const { data, error } = await supabase
-    .from('Product') // Prismaモデル名 'Product' を使用 (Supabaseテーブル名が異なる場合は要調整)
+    .from('Product') // Revert to PascalCase table name
     .select(`
       *,
-      brand: Brand (*),
-      category: Category (*)
+      Brand (*), 
+      Category (*) 
     `);
+    // Assuming relation names match PascalCase model names
 
   if (error) {
     console.error('Error fetching products:', error);
     return { data: null, error };
   }
 
-  // Supabaseから取得したデータ (ProductWithRelations[]) を Product[] にキャスト可能か確認
-  // brand と category がネストされたオブジェクトとして取得される想定
-  // 型が一致しない場合はここでマッピング処理が必要
-  const products: Product[] = data as ProductWithRelations[]; 
+  // TODO: Replace this assertion with proper type mapping or use generated Supabase types.
+  // The fetched data structure from Supabase needs to align with the Product type definition.
+  // Ensure the select query (`Brand (*), Category (*)`) correctly populates `brand` and `category` fields in the Product type.
+  const products: Product[] = data as Product[]; // Use Product type for assertion
 
   return { data: products, error: null };
 };

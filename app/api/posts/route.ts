@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireAuth, getUserId } from '@/lib/auth';
+import supabase from '@/lib/supabase'; // Import Supabase client
+import { requireAuth } from '@/lib/auth'; // Removed getUserId as it's not used here
 import { uploadImage } from '@/lib/supabase-storage';
+import { ProductTag, Product, Brand, Category } from '@/src/types/product'; // Use ProductTag
 
 // 投稿一覧を取得
 export async function GET(req: NextRequest) {
@@ -9,88 +10,96 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
     // const limit = Number(searchParams.get('limit') || '10'); // Remove duplicate declaration
-    const page = Number(searchParams.get('page') || '1'); // Keep for pagination info, but remove skip/take
-    const limit = Number(searchParams.get('limit') || '10'); // Keep for pagination info
-    // const currentUserId = await getUserId(); // Remove user-specific logic
+    const page = Number(searchParams.get('page') || '1');
+    const limit = Number(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+    const from = skip;
+    const to = skip + limit - 1;
+    // const currentUserId = await getUserId(); // TODO: Re-implement like status fetching
 
-    // クエリパラメータに基づいてフィルタリング (Remove filtering)
-    // const where = userId ? { userId } : {};
-    const where = {}; // No filter for now
+    console.log('Fetching posts from Supabase...');
 
-    console.log('Fetching posts from DB...'); // Add log
+    // クエリを構築
+    let query = supabase
+      .from('Post') // Revert to PascalCase table name
+      .select(`
+        *,
+        User ( id, username, name, image ), 
+        Tag (
+          *,
+          Product (
+            *,
+            Brand (*),
+            Category (*)
+          )
+        ),
+        Like ( count ), 
+        Comment ( count )
+      `, { count: 'exact' }) // Fetch count simultaneously
+      .order('createdAt', { ascending: false }) // Revert to camelCase column name (based on Prisma schema)
+      .range(from, to);
 
-    // 投稿一覧を取得 (Restore include, remove skip/take)
-    const posts = await prisma.post.findMany({
-      where,
-      include: { // Restore include
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-            image: true,
-          },
-        },
-        tags: {
-          include: {
-            product: {
-              include: {
-                brand: true,
-                category: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          },
-        },
+    // クエリパラメータに基づいてフィルタリング
+    if (userId) {
+      // Revert to camelCase foreign key column name
+      query = query.eq('userId', userId); 
+    }
+
+    // クエリを実行
+    const { data: postsData, error, count: total } = await query;
+
+    if (error) {
+      console.error('Error fetching posts:', error);
+      return NextResponse.json(
+        { error: '投稿一覧の取得に失敗しました' },
+        { status: 500 }
+      );
+    }
+
+    console.log(`Found ${postsData?.length ?? 0} posts.`);
+
+    // TODO: Fetch like status for the current user efficiently (e.g., using RPC)
+    // For now, return posts without like status.
+    // Map Supabase response structure if needed (e.g., likes/comments count)
+    const posts = postsData?.map(p => ({
+      ...p,
+      // Map counts from PascalCase relation names
+      _count: { 
+        likes: p.Like[0]?.count ?? 0,
+        comments: p.Comment[0]?.count ?? 0,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      // skip, // Remove pagination for query
-      // take: limit, // Remove pagination for query
-    });
+      // Remove the count arrays from the main object
+      Like: undefined, 
+      Comment: undefined,
+      // Map user relation from PascalCase
+      user: p.User, 
+      User: undefined,
+      // Map tags relation from PascalCase
+      // Use ProductTag type
+      tags: p.Tag?.map((t: ProductTag & { Product?: Product & { Brand?: Brand, Category?: Category } }) => ({
+          ...t,
+          product: t.Product ? {
+              ...t.Product,
+              brand: t.Product.Brand,
+              category: t.Product.Category,
+              Brand: undefined, // Clean up nested PascalCase
+              Category: undefined, // Clean up nested PascalCase
+          } : null,
+          Product: undefined, // Clean up nested PascalCase
+      })) || [],
+      Tag: undefined, // Clean up PascalCase relation name
+    })) || [];
 
-    console.log(`Found ${posts.length} posts.`); // Add log with count
+    // Ensure total is not null
+    const totalCount = total ?? 0;
 
-    // 総投稿数を取得
-    const total = await prisma.post.count({ where }); // Keep total count
-
-    // // Remove user-specific like logic
-    // let likedPostIds: string[] = [];
-    // if (currentUserId) {
-    //   const likes = await prisma.like.findMany({
-    //     where: {
-    //       userId: currentUserId,
-    //       postId: {
-    //         in: posts.map(post => post.id),
-    //       },
-    //     },
-    //     select: {
-    //       postId: true,
-    //     },
-    //   });
-    //   likedPostIds = likes.map(like => like.postId);
-    // }
-
-    // // Remove adding like info
-    // const postsWithLikeInfo = posts.map(post => ({
-    //   ...post,
-    //   isLiked: likedPostIds.includes(post.id),
-    // }));
-
-    // Return raw posts for now
     return NextResponse.json({
-      posts: posts, // Return raw posts
+      posts: posts,
       pagination: {
-        total,
-        page, // Keep original page/limit for pagination info if needed later
+        total: totalCount,
+        page,
         limit,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(totalCount / limit),
       },
     });
   } catch (error) {
@@ -149,46 +158,97 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    
-    // 投稿を作成
-    const post = await prisma.post.create({
-      data: {
+
+    // 1. 投稿を作成
+    const { data: newPostData, error: postInsertError } = await supabase
+      .from('Post') // Revert to PascalCase
+      .insert({
         title,
         description,
-        imageUrl: uploadResult.url,
-        userId,
-        tags: {
-          create: tags.map(tag => ({
-            productId: tag.productId,
-            xPosition: tag.xPosition,
-            yPosition: tag.yPosition,
-          })),
-        },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-            image: true,
-          },
-        },
-        tags: {
-          include: {
-            product: {
-              include: {
-                brand: true,
-                category: true,
-              },
-            },
-          },
-        },
-      },
-    });
+        imageUrl: uploadResult.url, // Revert to camelCase
+        userId: userId,             // Revert to camelCase
+      })
+      .select('id') // Select only the ID initially
+      .single();
+
+    if (postInsertError || !newPostData) {
+      // Handle potential column name mismatch error here if needed
+      console.error('Error creating post:', postInsertError);
+      return NextResponse.json({ error: '投稿の作成に失敗しました (step 1)' }, { status: 500 });
+    }
+
+    const postId = newPostData.id;
+
+    // 2. タグを作成 (if any)
+    if (tags.length > 0) {
+      const tagsToInsert = tags.map(tag => ({
+        postId: postId,          // Revert to camelCase
+        productId: tag.productId, // Revert to camelCase
+        xPosition: tag.xPosition, // Revert to camelCase
+        yPosition: tag.yPosition, // Revert to camelCase
+      }));
+
+      const { error: tagsInsertError } = await supabase
+        .from('Tag') // Revert to PascalCase
+        .insert(tagsToInsert);
+
+      if (tagsInsertError) {
+        // Handle potential column name mismatch error here if needed
+        // TODO: Consider rolling back the post insert or handling partial failure
+        console.error('Error creating tags:', tagsInsertError);
+        return NextResponse.json({ error: 'タグの作成に失敗しました (step 2)' }, { status: 500 });
+      }
+    }
+
+    // 3. 作成された投稿と関連データを取得して返す
+    const { data: finalPostData, error: finalFetchError } = await supabase
+      .from('Post') // Revert to PascalCase
+      .select(`
+        *,
+        User ( id, username, name, image ),
+        Tag (
+          *,
+          Product (
+            *,
+            Brand (*),
+            Category (*)
+          )
+        )
+      `)
+      .eq('id', postId)
+      .single();
+
+    if (finalFetchError || !finalPostData) {
+      console.error('Error fetching created post:', finalFetchError);
+      // Return basic info if fetch fails, as post/tags were likely created
+      return NextResponse.json({ id: postId, title, description, imageUrl: uploadResult.url, userId }); 
+    }
     
-    return NextResponse.json(post);
+    // Map response similar to GET
+    const finalPost = {
+        ...finalPostData,
+        user: finalPostData.User,
+        User: undefined,
+        // Use ProductTag type
+        tags: finalPostData.Tag?.map((t: ProductTag & { Product?: Product & { Brand?: Brand, Category?: Category } }) => ({
+            ...t,
+            product: t.Product ? {
+                ...t.Product,
+                brand: t.Product.Brand,
+                category: t.Product.Category,
+                Brand: undefined,
+                Category: undefined,
+            } : null,
+            Product: undefined,
+        })) || [],
+        Tag: undefined,
+    };
+
+
+    return NextResponse.json(finalPost);
   } catch (error) {
+    // Keep existing error handling structure
+    // Keep existing error handling structure
     console.error('Error creating post:', error);
     
     if (error instanceof Error && error.message === '認証が必要です') {

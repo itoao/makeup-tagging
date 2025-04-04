@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth, hasAccessToResource } from '@/lib/auth';
+// TODO: Import generated Supabase types if available
 
 // コメントを更新
 export async function PATCH(
@@ -11,12 +12,25 @@ export async function PATCH(
     const commentId = params.commentId;
     const userId = await requireAuth();
 
-    // コメントを取得
-    const comment = await prisma.comment.findUnique({
-      where: { id: commentId },
-    });
+    // コメントを取得して所有者を確認
+    const { data: commentData, error: fetchError } = await supabase
+      .from('Comment') // Revert to PascalCase
+      .select('userId') // Revert to camelCase
+      .eq('id', commentId)
+      .single(); // Use single to error if not found
 
-    if (!comment) {
+    if (fetchError) {
+       if (fetchError.code === 'PGRST116') { // Comment not found
+         return NextResponse.json(
+           { error: 'コメントが見つかりません' },
+           { status: 404 }
+         );
+       }
+       console.error("Error fetching comment for update:", fetchError);
+       return NextResponse.json({ error: 'コメントの取得中にエラーが発生しました' }, { status: 500 });
+    }
+
+    if (!commentData) { // Should be caught by single()
       return NextResponse.json(
         { error: 'コメントが見つかりません' },
         { status: 404 }
@@ -24,7 +38,7 @@ export async function PATCH(
     }
 
     // コメントの所有者かどうか確認
-    if (!hasAccessToResource(comment.userId)) {
+    if (!hasAccessToResource(commentData.userId)) { // Check against fetched userId
       return NextResponse.json(
         { error: 'この操作を行う権限がありません' },
         { status: 403 }
@@ -43,24 +57,32 @@ export async function PATCH(
       );
     }
 
-    // コメントを更新
-    const updatedComment = await prisma.comment.update({
-      where: { id: commentId },
-      data: { content },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-            image: true,
-          },
-        },
-      },
-    });
+    // コメントを更新し、ユーザー情報を含めて取得
+    const { data: updatedCommentData, error: updateError } = await supabase
+      .from('Comment') // Revert to PascalCase
+      .update({ content })
+      .eq('id', commentId)
+      .select(`
+        *,
+        User ( id, username, name, image )
+      `)
+      .single();
 
-    return NextResponse.json(updatedComment);
+    if (updateError) {
+      console.error('Error updating comment:', updateError);
+      return NextResponse.json({ error: 'コメントの更新に失敗しました' }, { status: 500 });
+    }
+
+    // Map user relation from PascalCase
+    const updatedCommentResponse = {
+        ...updatedCommentData,
+        user: updatedCommentData.User,
+        User: undefined,
+    };
+
+    return NextResponse.json(updatedCommentResponse);
   } catch (error) {
+    // Keep existing error handling
     console.error('Error updating comment:', error);
 
     if (error instanceof Error && error.message === '認証が必要です') {
@@ -86,19 +108,29 @@ export async function DELETE(
     const commentId = params.commentId;
     const userId = await requireAuth();
 
-    // コメントを取得
-    const comment = await prisma.comment.findUnique({
-      where: { id: commentId },
-      include: {
-        post: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-    });
+    // コメントと関連する投稿の所有者IDを取得
+    const { data: commentToDeleteData, error: fetchError } = await supabase
+      .from('Comment') // Revert to PascalCase
+      .select(`
+        userId,
+        Post ( userId ) 
+      `) // Revert to camelCase & PascalCase
+      .eq('id', commentId)
+      .single();
 
-    if (!comment) {
+    if (fetchError) {
+       if (fetchError.code === 'PGRST116') { // Comment not found
+         return NextResponse.json(
+           { error: 'コメントが見つかりません' },
+           { status: 404 }
+         );
+       }
+       console.error("Error fetching comment for deletion:", fetchError);
+       return NextResponse.json({ error: 'コメントの取得中にエラーが発生しました' }, { status: 500 });
+    }
+
+
+    if (!commentToDeleteData) { // Should be caught by single()
       return NextResponse.json(
         { error: 'コメントが見つかりません' },
         { status: 404 }
@@ -106,8 +138,10 @@ export async function DELETE(
     }
 
     // コメントの所有者または投稿の所有者かどうか確認
-    const isCommentOwner = comment.userId === userId;
-    const isPostOwner = comment.post.userId === userId;
+    const isCommentOwner = commentToDeleteData.userId === userId; // Use camelCase
+    // Access nested post owner id, using a safer type assertion
+    const postData = commentToDeleteData.Post as unknown as { userId: string } | null; // Use PascalCase & camelCase
+    const isPostOwner = postData?.userId === userId; // Use camelCase
 
     if (!isCommentOwner && !isPostOwner) {
       return NextResponse.json(
@@ -117,12 +151,19 @@ export async function DELETE(
     }
 
     // コメントを削除
-    await prisma.comment.delete({
-      where: { id: commentId },
-    });
+    const { error: deleteError } = await supabase
+      .from('Comment') // Revert to PascalCase
+      .delete()
+      .eq('id', commentId);
+
+    if (deleteError) {
+      console.error('Error deleting comment:', deleteError);
+      return NextResponse.json({ error: 'コメントの削除に失敗しました' }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    // Keep existing error handling
     console.error('Error deleting comment:', error);
 
     if (error instanceof Error && error.message === '認証が必要です') {

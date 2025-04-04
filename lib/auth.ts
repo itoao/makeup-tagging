@@ -1,5 +1,5 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { prisma } from './prisma';
+import supabase from './supabase'; // Import Supabase client
 
 /**
  * 現在のユーザーIDを取得する
@@ -29,10 +29,19 @@ export async function getCurrentDbUser() {
   if (!userId) {
     return null;
   }
-  
-  const dbUser = await prisma.user.findUnique({
-    where: { id: userId }
-  });
+
+  // Fetch user from Supabase
+  const { data: dbUser, error } = await supabase
+    .from('users') // Use snake_case table name
+    .select('*') // Select all columns for now, adjust as needed
+    .eq('id', userId)
+    .single(); // Expect a single user or null/error
+
+  if (error) {
+    console.error("Error fetching DB user:", error);
+    // Decide how to handle error - return null or throw?
+    return null; 
+  }
   
   return dbUser;
 }

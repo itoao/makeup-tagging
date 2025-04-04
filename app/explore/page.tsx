@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Post } from "@/src/types/product" // Import Post type
 import Link from "next/link"
 
 export default function ExplorePage() {
-  const [posts, setPosts] = useState<any[]>([])
+  const [posts, setPosts] = useState<Post[]>([]) // Use Post[] type
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -25,8 +26,9 @@ export default function ExplorePage() {
     try {
       setLoading(true)
       const currentPage = reset ? 1 : page
-      const params: any = { page: currentPage, limit: 9 }
-      
+      // Use a more specific type for params
+      const params: Record<string, string | number | boolean> = { page: currentPage, limit: 9 }
+
       // Add filter based on active tab
       if (activeTab === 'following') {
         // Only fetch posts from users the current user follows
@@ -47,13 +49,15 @@ export default function ExplorePage() {
         setError(error)
         return
       }
-      
-      if (data) {
-        const newPosts = reset ? data.posts : [...posts, ...data.posts]
-        setPosts(newPosts)
-        setHasMore(currentPage < data.pagination.pages)
+
+      // Access posts via data.posts and pagination via data.pagination
+      if (data && data.posts) { // Check data.posts
+        const newPosts = reset ? data.posts : [...posts, ...data.posts]; // Use data.posts
+        setPosts(newPosts);
+        // Use hasNextPage from pagination object
+        setHasMore(data.pagination.hasNextPage);
         if (!reset) {
-          setPage(currentPage + 1)
+          setPage(currentPage + 1);
         }
       }
     } catch (err) {
@@ -118,12 +122,17 @@ export default function ExplorePage() {
         {posts.map((post) => (
           <Link href={`/post/${post.id}`} key={post.id}>
             <MakeupPost
-              username={post.user.username}
+              // Use post.user based on updated Post type
+              username={post.user?.username ?? 'unknown'}
+              // Use post.imageUrl based on updated Post type
               imageUrl={post.imageUrl}
-              title={post.title}
-              likes={post._count.likes}
-              comments={post._count.comments}
-              productCount={post.tags.length}
+              // Use post.title based on updated Post type
+              title={post.title ?? 'Untitled'}
+              // Use post._count.likes based on updated Post type
+              likes={post._count?.likes ?? 0}
+              // Use post._count.comments based on updated Post type
+              comments={post._count?.comments ?? 0}
+              productCount={post.tags?.length ?? 0}
               postId={post.id}
             />
           </Link>

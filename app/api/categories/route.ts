@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
+// TODO: Import generated Supabase types if available
 
 // カテゴリー一覧を取得
 export async function GET(req: NextRequest) {
@@ -10,40 +11,45 @@ export async function GET(req: NextRequest) {
     const limit = Number(searchParams.get('limit') || '50');
     const page = Number(searchParams.get('page') || '1');
     const skip = (page - 1) * limit;
+    const from = skip;
+    const to = skip + limit - 1;
+
+    // クエリを構築
+    let query = supabase
+      .from('Category') // Revert to PascalCase
+      .select('*', { count: 'exact' }) // Fetch all fields and count
+      .order('name', { ascending: true })
+      .range(from, to);
 
     // クエリパラメータに基づいてフィルタリング
-    const where = name
-      ? {
-          name: {
-            contains: name,
-            mode: 'insensitive' as const,
-          },
-        }
-      : {};
+    if (name) {
+      query = query.ilike('name', `%${name}%`);
+    }
 
-    // カテゴリー一覧を取得
-    const categories = await prisma.category.findMany({
-      where,
-      orderBy: {
-        name: 'asc',
-      },
-      skip,
-      take: limit,
-    });
+    // クエリを実行
+    const { data: categories, error, count: total } = await query;
 
-    // 総カテゴリー数を取得
-    const total = await prisma.category.count({ where });
+    if (error) {
+      console.error('Error fetching categories:', error);
+      return NextResponse.json(
+        { error: 'カテゴリー一覧の取得に失敗しました' },
+        { status: 500 }
+      );
+    }
+
+    const totalCount = total ?? 0;
 
     return NextResponse.json({
-      categories,
+      categories: categories || [],
       pagination: {
-        total,
+        total: totalCount,
         page,
         limit,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(totalCount / limit),
       },
     });
   } catch (error) {
+    // Keep existing error handling
     console.error('Error fetching categories:', error);
     return NextResponse.json(
       { error: 'カテゴリー一覧の取得に失敗しました' },
@@ -69,28 +75,47 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     // 同名のカテゴリーが存在するか確認
-    const existingCategory = await prisma.category.findUnique({
-      where: { name },
-    });
-    
-    if (existingCategory) {
+    const { data: existingCategoryData, error: checkError } = await supabase
+      .from('Category') // Revert to PascalCase
+      .select('id')
+      .eq('name', name)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error("Error checking existing category:", checkError);
+      return NextResponse.json({ error: 'カテゴリー存在確認中にエラーが発生しました' }, { status: 500 });
+    }
+    if (existingCategoryData) {
       return NextResponse.json(
         { error: '同名のカテゴリーが既に存在します' },
         { status: 400 }
       );
     }
-    
+
     // カテゴリーを作成
-    const category = await prisma.category.create({
-      data: {
-        name,
-      },
-    });
-    
-    return NextResponse.json(category);
+    const { data: newCategory, error: insertError } = await supabase
+      .from('Category') // Revert to PascalCase
+      .insert({ name })
+      .select() // Select the created category data
+      .single(); // Expect a single row
+
+    if (insertError) {
+       // Handle potential unique constraint violation for name
+       if (insertError.code === '23505') { 
+         return NextResponse.json(
+           { error: '同名のカテゴリーが既に存在します' },
+           { status: 400 }
+         );
+       }
+      console.error('Error creating category:', insertError);
+      return NextResponse.json({ error: 'カテゴリーの作成に失敗しました' }, { status: 500 });
+    }
+
+    return NextResponse.json(newCategory);
   } catch (error) {
+    // Keep existing error handling
     console.error('Error creating category:', error);
     
     if (error instanceof Error && error.message === '認証が必要です') {

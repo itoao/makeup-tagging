@@ -6,51 +6,64 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { productApi } from "@/lib/api"
+import { Product } from "@/src/types/product" // Import Product type
 import Image from "next/image"
 import Link from "next/link"
 
-// Fallback products in case API fails
-const fallbackProducts = [
+// Fallback products in case API fails - Updated to match Product type
+const fallbackProducts: Product[] = [
   {
-    id: "1",
+    id: "fallback-1", // Use distinct IDs
     name: "マキアージュ ドラマティックパウダリー UV",
-    brand: { name: "資生堂" },
+    description: null,
     price: 3850,
-    category: { name: "ベースメイク" },
-    imageUrl: "/マキアージュuv.jpg?height=200&width=200",
-    _count: { tags: 128 },
+    imageUrl: "/マキアージュuv.jpg?height=200&width=200", // Corrected property name
+    brand_id: "dummy-brand-1", // Added dummy FK
+    category_id: "dummy-category-1", // Added dummy FK
+    brand: { id: "dummy-brand-1", name: "資生堂" }, // Added dummy id
+    category: { id: "dummy-category-1", name: "ベースメイク" }, // Added dummy id
+    // Removed _count
   },
   {
-    id: "2",
+    id: "fallback-2", // Use distinct IDs
     name: "リップモンスター",
-    brand: { name: "KATE" },
+    description: null,
     price: 1650,
-    category: { name: "リップ" },
-    imageUrl: "/リップモンスター.jpg?height=200&width=200", 
-    _count: { tags: 94 },
+    imageUrl: "/リップモンスター.jpg?height=200&width=200", // Corrected property name
+    brand_id: "dummy-brand-2",
+    category_id: "dummy-category-2",
+    brand: { id: "dummy-brand-2", name: "KATE" }, // Added dummy id
+    category: { id: "dummy-category-2", name: "リップ" }, // Added dummy id
+    // Removed _count
   },
   {
-    id: "3",
+    id: "fallback-3", // Use distinct IDs
     name: "デザイニング カラー アイズ",
-    brand: { name: "SUQQU" },
+    description: null,
     price: 6600,
-    category: { name: "アイシャドウ" },
-    imageUrl: "/designing-color-eyes.jpg?height=200&width=200",
-    _count: { tags: 156 },
+    imageUrl: "/designing-color-eyes.jpg?height=200&width=200", // Corrected property name
+    brand_id: "dummy-brand-3",
+    category_id: "dummy-category-3",
+    brand: { id: "dummy-brand-3", name: "SUQQU" }, // Added dummy id
+    category: { id: "dummy-category-3", name: "アイシャドウ" }, // Added dummy id
+    // Removed _count
   },
   {
-    id: "4",
+    id: "fallback-4", // Use distinct IDs
     name: "ラッシュエキスパート",
-    brand: { name: "ヒロインメイク" },
+    description: null,
     price: 1320,
-    category: { name: "マスカラ" },
-    imageUrl: "/ラッシュエキスパート.jpg?height=200&width=200",
-    _count: { tags: 87 },
+    imageUrl: "/ラッシュエキスパート.jpg?height=200&width=200", // Corrected property name
+    brand_id: "dummy-brand-4",
+    category_id: "dummy-category-4",
+    brand: { id: "dummy-brand-4", name: "ヒロインメイク" }, // Added dummy id
+    category: { id: "dummy-category-4", name: "マスカラ" }, // Added dummy id
+    // Removed _count
   },
 ]
 
 export function FeaturedProducts() {
-  const [products, setProducts] = useState<any[]>([])
+  const [products, setProducts] = useState<Product[]>([]) // Use Product[] type
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -59,13 +72,14 @@ export function FeaturedProducts() {
         setLoading(true)
         // Remove invalid 'sort' parameter
         const { data, error } = await productApi.getProducts({ 
-          limit: 4, 
+          limit: 4,
         })
-        
-        if (!error && data && data.products.length > 0) {
-          setProducts(data.products)
+
+        // Access products via data.data and check length
+        if (!error && data && data.data?.length > 0) {
+          setProducts(data.data)
         } else {
-          // Use fallback data if API fails
+          // Use updated fallback data if API fails or returns no data
           setProducts(fallbackProducts)
         }
       } catch (err) {
@@ -101,7 +115,7 @@ export function FeaturedProducts() {
           <CardContent className="p-4">
             <div className="relative aspect-square mb-3">
               <Image
-                src={product.imageUrl || "/placeholder.svg"}
+                src={product.imageUrl || "/placeholder.svg"} // Use imageUrl
                 alt={product.name}
                 fill
                 className="object-cover rounded-md"
@@ -109,14 +123,14 @@ export function FeaturedProducts() {
               />
             </div>
             <Badge variant="outline" className="mb-2">
-              {product.category.name}
+              {product.category?.name ?? 'カテゴリ未設定'} {/* Add null check for category */}
             </Badge>
             <h3 className="font-medium line-clamp-1">{product.name}</h3>
             <p className="text-sm text-muted-foreground mb-1">{product.brand?.name ?? 'Unknown Brand'}</p> {/* Add safety check for brand name */}
             <div className="flex justify-between items-center mt-2">
               <span className="font-medium">¥{product.price?.toLocaleString() || "価格未設定"}</span>
-              {/* Add safety check for _count.tags */}
-              <span className="text-xs text-muted-foreground">Used in {product?._count?.tags ?? 0} looks</span>
+              {/* Temporarily comment out the count display as _count is removed from Product type */}
+              {/* <span className="text-xs text-muted-foreground">Used in {product?._count?.tags ?? 0} looks</span> */}
             </div>
             <Button className="w-full mt-3" size="sm" asChild>
               <Link href={`/products?id=${product.id}`}>View Details</Link>

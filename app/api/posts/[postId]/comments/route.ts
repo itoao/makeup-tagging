@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
+// TODO: Import generated Supabase types if available
 
 // 投稿のコメント一覧を取得
 export async function GET(
@@ -13,54 +14,66 @@ export async function GET(
     const limit = Number(searchParams.get('limit') || '20');
     const page = Number(searchParams.get('page') || '1');
     const skip = (page - 1) * limit;
+    const from = skip;
+    const to = skip + limit - 1;
 
     // 投稿が存在するか確認
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-    });
+    const { data: postData, error: postError } = await supabase
+      .from('Post') // Revert to PascalCase
+      .select('id')
+      .eq('id', postId)
+      .maybeSingle();
 
-    if (!post) {
+    if (postError) {
+      console.error("Error checking post existence:", postError);
+      return NextResponse.json({ error: '投稿の確認中にエラーが発生しました' }, { status: 500 });
+    }
+    if (!postData) {
       return NextResponse.json(
         { error: '投稿が見つかりません' },
         { status: 404 }
       );
     }
 
-    // コメント一覧を取得
-    const comments = await prisma.comment.findMany({
-      where: { postId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-            image: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      skip,
-      take: limit,
-    });
+    // コメント一覧と総数を取得
+    const { data: commentsData, error: commentsError, count: total } = await supabase
+      .from('Comment') // Revert to PascalCase
+      .select(`
+        *,
+        User ( id, username, name, image )
+      `, { count: 'exact' })
+      .eq('postId', postId) // Revert to camelCase
+      .order('createdAt', { ascending: false }) // Revert to camelCase
+      .range(from, to);
 
-    // 総コメント数を取得
-    const total = await prisma.comment.count({
-      where: { postId },
-    });
+    if (commentsError) {
+      console.error('Error fetching comments:', commentsError);
+      return NextResponse.json(
+        { error: 'コメント一覧の取得に失敗しました' },
+        { status: 500 }
+      );
+    }
+
+    // Map user relation from PascalCase
+    const comments = commentsData?.map(c => ({
+        ...c,
+        user: c.User,
+        User: undefined,
+    })) || [];
+
+    const totalCount = total ?? 0;
 
     return NextResponse.json({
       comments,
       pagination: {
-        total,
+        total: totalCount,
         page,
         limit,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(totalCount / limit),
       },
     });
   } catch (error) {
+    // Keep existing error handling
     console.error('Error fetching comments:', error);
     return NextResponse.json(
       { error: 'コメント一覧の取得に失敗しました' },
@@ -91,38 +104,52 @@ export async function POST(
     }
 
     // 投稿が存在するか確認
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-    });
+    const { data: postData, error: postError } = await supabase
+      .from('Post') // Revert to PascalCase
+      .select('id')
+      .eq('id', postId)
+      .maybeSingle();
 
-    if (!post) {
+     if (postError) {
+       console.error("Error checking post existence:", postError);
+       return NextResponse.json({ error: '投稿の確認中にエラーが発生しました' }, { status: 500 });
+     }
+    if (!postData) {
       return NextResponse.json(
         { error: '投稿が見つかりません' },
         { status: 404 }
       );
     }
 
-    // コメントを作成
-    const comment = await prisma.comment.create({
-      data: {
+    // コメントを作成し、ユーザー情報を含めて取得
+    const { data: newCommentData, error: insertError } = await supabase
+      .from('Comment') // Revert to PascalCase
+      .insert({
         content,
-        userId,
-        postId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            name: true,
-            image: true,
-          },
-        },
-      },
-    });
+        userId: userId, // Revert to camelCase
+        postId: postId, // Revert to camelCase
+      })
+      .select(`
+        *,
+        User ( id, username, name, image )
+      `)
+      .single(); // Expect a single row back
 
-    return NextResponse.json(comment);
+    if (insertError) {
+      console.error('Error creating comment:', insertError);
+      return NextResponse.json({ error: 'コメントの作成に失敗しました' }, { status: 500 });
+    }
+
+     // Map user relation from PascalCase
+     const commentResponse = {
+         ...newCommentData,
+         user: newCommentData.User,
+         User: undefined,
+     };
+
+    return NextResponse.json(commentResponse);
   } catch (error) {
+    // Keep existing error handling
     console.error('Error creating comment:', error);
 
     if (error instanceof Error && error.message === '認証が必要です') {
