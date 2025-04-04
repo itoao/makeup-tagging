@@ -301,7 +301,7 @@ export default function PostDetailPage() {
         <div className="space-y-6">
           {/* Author Info - Use post.user */}
           <div className="flex items-center gap-3">
-            <Link href={`/user/${post.user?.username ?? '#'}`}>
+            <Link href={`/user/${post.user?.id ?? '#'}`}>
               <Avatar>
                 {/* Use post.user.image */}
                 <AvatarImage src={post.user?.image || "/placeholder-user.jpg"} alt={post.user?.username ?? 'U'} />
@@ -309,7 +309,7 @@ export default function PostDetailPage() {
               </Avatar>
             </Link>
             <div className="flex-1">
-              <Link href={`/user/${post.user?.username ?? '#'}`} className="font-medium hover:underline">
+              <Link href={`/user/${post.user?.id ?? '#'}`} className="font-medium hover:underline">
                 {/* Use post.user.name or username */}
                 {post.user?.name || post.user?.username}
               </Link>

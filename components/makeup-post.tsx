@@ -35,6 +35,7 @@ export function MakeupPost({ post, className = "" }: MakeupPostProps) {
   }
 
   // Safely access nested properties, providing defaults if post or user is null/undefined
+  const userId = post.user?.id; // Get user ID
   const username = post.user?.username ?? "Unknown User";
   const userImage = post.user?.image ?? "/placeholder-user.jpg"; // Renamed variable
   const likesCount = post._count?.likes ?? 0;
@@ -68,8 +69,12 @@ export function MakeupPost({ post, className = "" }: MakeupPostProps) {
           className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1 z-10"
           onClick={(e) => e.stopPropagation()} // Prevent card link navigation
         >
-          {/* Link to user profile */}
-          <Link href={`/user/${username}`} className="flex items-center gap-2">
+          {/* Link to user profile using userId, disable if no ID */}
+          <Link 
+            href={userId ? `/user/${userId}` : '#'} 
+            className={`flex items-center gap-2 ${!userId ? 'pointer-events-none' : ''}`}
+            aria-disabled={!userId}
+          >
             <Avatar className="h-6 w-6">
               <AvatarImage src={userImage} alt={username} /> {/* Use renamed variable */}
               <AvatarFallback>{username ? username[0].toUpperCase() : 'U'}</AvatarFallback>

@@ -119,23 +119,14 @@ export default function ExplorePage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Pass the entire post object to MakeupPost */}
         {posts.map((post) => (
-          <Link href={`/post/${post.id}`} key={post.id}>
-            <MakeupPost
-              // Use post.user based on updated Post type
-              username={post.user?.username ?? 'unknown'}
-              // Use post.imageUrl based on updated Post type
-              imageUrl={post.imageUrl}
-              // Use post.title based on updated Post type
-              title={post.title ?? 'Untitled'}
-              // Use post._count.likes based on updated Post type
-              likes={post._count?.likes ?? 0}
-              // Use post._count.comments based on updated Post type
-              comments={post._count?.comments ?? 0}
-              productCount={post.tags?.length ?? 0}
-              postId={post.id}
-            />
-          </Link>
+          // The Link wrapping MakeupPost might interfere with internal links.
+          // Consider removing this outer Link if MakeupPost handles its own navigation.
+          // For now, we keep it but ensure MakeupPost gets the full object.
+          // <Link href={`/post/${post.id}`} key={post.id}> 
+            <MakeupPost key={post.id} post={post} />
+          // </Link>
         ))}
 
         {loading &&
