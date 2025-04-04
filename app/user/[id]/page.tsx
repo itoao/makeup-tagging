@@ -13,7 +13,8 @@ import { UserProfile, Post } from "@/src/types/product" // Import types
 import Link from "next/link"
 
 export default function UserProfilePage() {
-  const { username } = useParams() as { username: string }
+  // Get userId from route parameters instead of username
+  const { id: userId } = useParams() as { id: string } 
   const { user: currentUser } = useUser()
   const [profile, setProfile] = useState<UserProfile | null>(null) // Use UserProfile type
   const [posts, setPosts] = useState<Post[]>([]) // Use Post[] type
@@ -25,9 +26,16 @@ export default function UserProfilePage() {
 
   useEffect(() => {
     const fetchProfile = async () => {
+      // Ensure userId is defined before fetching
+      if (!userId) { 
+        setLoading(false); // Stop loading if userId is not yet available
+        return;
+      }
+      
       try {
         setLoading(true)
-        const { data, error } = await userApi.getProfile(username)
+        // Fetch profile using userId
+        const { data, error } = await userApi.getProfile(userId) 
         
         if (error) {
           setError(error)
@@ -47,7 +55,8 @@ export default function UserProfilePage() {
     }
 
     fetchProfile()
-  }, [username])
+    // Depend on userId
+  }, [userId]) 
 
   useEffect(() => {
     const fetchPosts = async () => {
@@ -62,9 +71,9 @@ export default function UserProfilePage() {
           return
         }
 
-        // Access posts via data.data
-        if (data && data.data) {
-          setPosts(data.data)
+        // Access posts via data.posts based on PostsApiResponse type
+        if (data && data.posts) {
+          setPosts(data.posts)
         }
       } catch (err) {
         console.error("Error fetching posts:", err)
@@ -77,14 +86,16 @@ export default function UserProfilePage() {
   }, [profile])
 
   const handleFollow = async () => {
-    if (!profile) return
+    if (!profile || !userId) return // Also ensure userId is available for follow/unfollow
     
     try {
       if (isFollowing) {
-        await userApi.unfollowUser(username)
+        // Use userId for unfollow
+        await userApi.unfollowUser(userId) 
         setIsFollowing(false)
       } else {
-        await userApi.followUser(username)
+        // Use userId for follow
+        await userApi.followUser(userId) 
         setIsFollowing(true)
       }
 

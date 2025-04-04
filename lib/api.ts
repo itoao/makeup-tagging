@@ -123,10 +123,10 @@ export const userApi = {
     return apiRequest<PaginatedUsers>(`/users${query}`);
   },
 
-  // ユーザープロフィールを取得
-  getProfile: (username: string) => {
+  // ユーザープロフィールを取得 (identifier can be username or userId)
+  getProfile: (identifier: string) => { 
     // Use UserProfile type
-    return apiRequest<UserProfile>(`/users/${username}`);
+    return apiRequest<UserProfile>(`/users/${identifier}`); 
   },
 
   // ユーザープロフィールを更新
@@ -138,18 +138,18 @@ export const userApi = {
     });
   },
   
-  // ユーザーをフォロー
-  followUser: (username: string) => {
+  // ユーザーをフォロー (identifier can be username or userId)
+  followUser: (identifier: string) => { 
     // Assuming API returns simple success/error, use a basic type or void
-    return apiRequest<{ success: boolean }>(`/users/${username}/follow`, {
+    return apiRequest<{ success: boolean }>(`/users/${identifier}/follow`, { 
       method: 'POST',
     });
   },
 
-  // ユーザーのフォローを解除
-  unfollowUser: (username: string) => {
+  // ユーザーのフォローを解除 (identifier can be username or userId)
+  unfollowUser: (identifier: string) => { 
     // Assuming API returns simple success/error, use a basic type or void
-    return apiRequest<{ success: boolean }>(`/users/${username}/follow`, {
+    return apiRequest<{ success: boolean }>(`/users/${identifier}/follow`, { 
       method: 'DELETE',
     });
   },

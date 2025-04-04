@@ -32,7 +32,7 @@ export async function getCurrentDbUser() {
 
   // Fetch user from Supabase
   const { data: dbUser, error } = await supabase
-    .from('users') // Use snake_case table name
+    .from('User') // Use PascalCase table name based on schema
     .select('*') // Select all columns for now, adjust as needed
     .eq('id', userId)
     .single(); // Expect a single user or null/error

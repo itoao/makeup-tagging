@@ -3,41 +3,46 @@ import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
 // TODO: Import generated Supabase types if available
 
+// Helper function to get target user ID from identifier (always treat as userId)
+const getTargetUserId = async (userId: string): Promise<string | null> => {
+  // Always query by 'id' column
+  const { data, error } = await supabase
+    .from('User') // Use PascalCase table name
+    .select('id')
+    .eq('id', userId) // Always use 'id'
+    .single();
+
+  if (error || !data) {
+    // Log error but return null to let the caller handle 404 etc.
+    if (error && error.code !== 'PGRST116') { // Don't log "not found" as an error here
+      console.error(`Error fetching target user by id:`, error);
+    }
+    return null; // Return null if not found or error
+  }
+  return data.id;
+};
+
+
 // ユーザーをフォローする
 export async function POST(
   req: NextRequest,
-  { params }: { params: { username: string } }
+  // Update params type to use identifier
+  { params }: { params: { identifier: string } } 
 ) {
   try {
-    const username = params.username;
+    // Get identifier from params
+    const identifier = params.identifier; 
     const currentUserId = await requireAuth();
 
-    // フォロー対象のユーザーを取得
-    const { data: targetUserData, error: targetUserError } = await supabase
-      .from('User') // Revert to PascalCase
-      .select('id')
-      .eq('username', username)
-      .single();
+    // フォロー対象のユーザーIDを取得
+    const targetUserId = await getTargetUserId(identifier);
 
-    if (targetUserError) {
-       if (targetUserError.code === 'PGRST116') { // User not found
-         return NextResponse.json(
-           { error: 'ユーザーが見つかりません' },
-           { status: 404 }
-         );
-       }
-       console.error("Error fetching target user:", targetUserError);
-       return NextResponse.json({ error: 'ユーザー情報の取得中にエラーが発生しました' }, { status: 500 });
-    }
-
-    if (!targetUserData) { // Should be caught by single()
+    if (!targetUserId) {
       return NextResponse.json(
-        { error: 'ユーザーが見つかりません' },
+        { error: 'フォロー対象見つかりません' },
         { status: 404 }
       );
     }
-    
-    const targetUserId = targetUserData.id;
 
     // 自分自身をフォローしようとしている場合
     if (targetUserId === currentUserId) {
@@ -108,38 +113,23 @@ export async function POST(
 // ユーザーのフォローを解除する
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { username: string } }
+  // Update params type to use identifier
+  { params }: { params: { identifier: string } } 
 ) {
   try {
-    const username = params.username;
+    // Get identifier from params
+    const identifier = params.identifier; 
     const currentUserId = await requireAuth();
 
-    // フォロー解除対象のユーザーを取得
-    const { data: targetUserData, error: targetUserError } = await supabase
-      .from('User') // Revert to PascalCase
-      .select('id')
-      .eq('username', username)
-      .single();
+    // フォロー解除対象のユーザーIDを取得
+    const targetUserId = await getTargetUserId(identifier);
 
-     if (targetUserError) {
-       if (targetUserError.code === 'PGRST116') { // User not found
-         return NextResponse.json(
-           { error: 'ユーザーが見つかりません' },
-           { status: 404 }
-         );
-       }
-       console.error("Error fetching target user for unfollow:", targetUserError);
-       return NextResponse.json({ error: 'ユーザー情報の取得中にエラーが発生しました' }, { status: 500 });
-     }
-
-    if (!targetUserData) { // Should be caught by single()
-      return NextResponse.json(
-        { error: 'ユーザーが見つかりません' },
-        { status: 404 }
-      );
+    if (!targetUserId) {
+      // If target user not found, arguably the unfollow is "successful"
+      // or at least not an error from the client's perspective.
+      // Return success, or a specific message if needed.
+      return NextResponse.json({ success: true, message: '対象ユーザーが見つからないため、フォロー解除の必要はありませんでした。' });
     }
-    
-    const targetUserId = targetUserData.id;
 
     // フォロー関係を削除
     const { error: deleteError } = await supabase
@@ -150,8 +140,6 @@ export async function DELETE(
 
     if (deleteError) {
       // Note: Supabase delete doesn't typically error if the row doesn't exist.
-      // You might want to check the 'count' from the response if needed,
-      // but often just proceeding is fine.
       console.error('Error deleting follow relationship:', deleteError);
       return NextResponse.json({ error: 'フォロー関係の削除中にエラーが発生しました' }, { status: 500 });
     }
@@ -167,8 +155,6 @@ export async function DELETE(
         { status: 401 }
       );
     }
-
-    // Remove Prisma-specific error handling
 
     return NextResponse.json(
       { error: 'フォロー解除に失敗しました' },
