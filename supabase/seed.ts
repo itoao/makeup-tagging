@@ -270,6 +270,30 @@ async function main() {
       console.log(`${commentData.length} comments processed.`);
   }
 
+  // --- Create Saves --- // New section added
+  console.log('Creating saves...');
+  // Ensure users and posts exist
+  if (!user1Id || !user2Id || !posts || posts.length === 0) {
+      throw new Error("Cannot create saves: missing user or post data.");
+  }
+  // Use existing post variables
+  const saveData = [
+      { userId: user1Id, postId: post3.id }, // seeduser saves post-3
+      { userId: user2Id, postId: post1.id }, // anotheruser saves post-1
+  ];
+  const { error: saveInsertError } = await supabase
+      .from('Save') // Use PascalCase table name
+      .insert(saveData);
+  if (saveInsertError) {
+      if (saveInsertError.code === '23505') {
+          console.warn('Save relationship already exists, skipping insertion.');
+      } else {
+          console.error('Error inserting save data:', saveInsertError);
+      }
+  } else {
+      console.log(`${saveData.length} saves processed.`);
+  }
+
 
   console.log('✅ Seeding finished successfully.');
 

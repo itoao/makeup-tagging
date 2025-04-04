@@ -44,16 +44,16 @@ export interface Product {
   id: string;
   name: string;
   description: string | null;
-  price: number | null;
+  price?: number | null; // Make price optional
   imageUrl: string | null; // Matches DB schema
-  brandId: string; // Matches DB schema (camelCase FK)
-  categoryId: string; // Matches DB schema (camelCase FK)
+  brandId?: string; // Make optional
+  categoryId?: string; // Make optional
   // Use singular relation names matching user data structure
   brand: Brand | null;
   category: Category | null;
-  // Add timestamps matching DB schema (snake_case)
-  created_at: string;
-  updated_at: string;
+  // Add timestamps matching DB schema (snake_case) - Make optional
+  created_at?: string;
+  updated_at?: string;
 }
 
 // --- User, Post, Comment, Tag Types (Aligned with User Data) ---
@@ -62,17 +62,16 @@ export interface UserProfile {
   id: string;
   username: string;
   name: string | null;
-  image: string | null; // Changed from imageUrl
+  image: string | null; // Correct column name is 'image'
   // bio: string | null; // Keep if needed
-  // isFollowing?: boolean; // Keep if needed
-  // isCurrentUser?: boolean; // Keep if needed
-  // Add count object based on usage in page.tsx
-  // Add counts if needed based on user profile page usage
-  // _count?: {
-  //   posts?: number;
-  //   followers?: number;
-  //   following?: number;
-  // } | null;
+  // isFollowing?: boolean; // Keep if needed - This will be added outside the profile type in the response
+  // isCurrentUser?: boolean; // Keep if needed - This will be added outside the profile type in the response
+  // Add count object
+   _count?: {
+     posts?: number; // posts count might need another query
+     followers?: number;
+     following?: number;
+   } | null;
 }
 
 export interface ProductTag {
@@ -114,12 +113,13 @@ export interface Post {
   updatedAt: string; // Changed from updated_at
   // Relations matching user data structure
   user: UserProfile | null; // Changed from users
-  comments: Comment[]; // Kept as array
+  comments?: Comment[]; // Make comments optional as we are not fetching them now
   tags: ProductTag[]; // Kept as array
   // Add _count based on user data structure
   _count: {
     likes: number;
     comments: number;
+    saves: number; // Add saves count
   } | null;
   // Add properties populated by API based on current user (if applicable)
   isLiked?: boolean;

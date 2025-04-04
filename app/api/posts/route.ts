@@ -1,8 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
-import { getUserId } from '@/lib/auth'; // Import getUserId
+import { getUserId, requireAuth } from '@/lib/auth'; // Import getUserId and requireAuth
 import { uploadImage } from '@/lib/supabase-storage';
-import { ProductTag, Product, Brand, Category, Post as PostType, UserProfile } from '@/src/types/product'; // Use PostType alias, import UserProfile
+// Ensure Post type includes isSaved and _count.saves
+import { ProductTag, Product, Brand, Category, Post as PostType, UserProfile } from '@/src/types/product';
+
+// Define interfaces for Supabase query results to help TypeScript inference
+interface SupabaseUser {
+  id: string;
+  username: string;
+  name: string | null;
+  image: string | null; // Use correct column name 'image'
+}
+interface SupabaseLike {
+  userId: string;
+}
+interface SupabaseSave {
+  userId: string;
+}
+interface SupabaseBrand {
+    id: string;
+    name: string;
+}
+interface SupabaseProduct {
+    id: string;
+    name: string;
+    imageUrl: string | null;
+    brand: SupabaseBrand | null;
+}
+interface SupabaseTag {
+    id: string;
+    postId: string;
+    productId: string;
+    created_at: string;
+    xPosition: number;
+    yPosition: number;
+    product: SupabaseProduct | null;
+}
+interface CompletePostDataFromSupabase {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string;
+  created_at: string;
+  updated_at: string;
+  userId: string;
+  user: SupabaseUser | null; // Expecting object or null
+  likes: SupabaseLike[];
+  saves: SupabaseSave[];
+  tags: SupabaseTag[];
+}
+
 
 // 投稿一覧を取得
 export async function GET(req: NextRequest) {
@@ -14,24 +62,31 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
     const from = skip;
     const to = skip + limit - 1;
-    const currentAuthUserId = await getUserId(); // Get current authenticated user's ID
+    const currentAuthUserId = await getUserId(); // Get current authenticated user's ID (can be null)
 
-    console.log('[API /posts] Fetching posts (SIMPLIFIED)...'); // Add log
+    console.log(`[API /posts] Fetching posts for user: ${userIdParam ?? 'all'}, page: ${page}, limit: ${limit}, authUser: ${currentAuthUserId ?? 'none'}`);
 
-    // クエリを構築 - Use PascalCase table names and camelCase column names
-    // EXTREMELY SIMPLIFIED select for debugging - only direct Post fields
+    // クエリを構築 - 関連データを含める
+    // Fetch related counts and user details
+    // Fetch user's like/save status if authenticated
+    let selectStatement = `
+      id,
+      title,
+      description,
+      imageUrl,
+      created_at,
+      updated_at,
+      userId,
+      user:User ( id, username, name, image ),
+      likes:Like ( userId ),
+      saves:Save ( userId ),
+      tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, brand:Brand ( id, name ) ) )
+    `;
+
     let query = supabase
-      .from('Post') // Use PascalCase table name "Post"
-      .select(`
-        id,
-        title,
-        description,
-        imageUrl,
-        created_at, 
-        updated_at, 
-        userId
-      `, { count: 'exact' }) // Select only direct fields, but keep count for pagination
-      .order('created_at', { ascending: false }) // Use snake_case column name
+      .from('Post')
+      .select(selectStatement, { count: 'exact' }) // Fetch related data
+      .order('created_at', { ascending: false })
       .range(from, to);
 
     // クエリパラメータに基づいてフィルタリング
@@ -51,31 +106,62 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    console.log(`[API /posts] Found ${postsData?.length ?? 0} posts raw data (SIMPLIFIED).`);
+    console.log(`[API /posts] Found ${postsData?.length ?? 0} posts raw data.`);
 
-    // Map Supabase response structure (SIMPLIFIED)
-    const posts: PostType[] = postsData?.map((p: any): PostType => { // Use 'any' for raw data, add return type
+    // Map Supabase response structure to PostType
+    const posts: PostType[] = postsData?.map((p: any): PostType => {
+      const likesCount = p.likes?.length ?? 0;
+      const savesCount = p.saves?.length ?? 0;
+      // Check if the current authenticated user has liked/saved this post
+      const isLiked = currentAuthUserId ? p.likes.some((like: any) => like.userId === currentAuthUserId) : false;
+      const isSaved = currentAuthUserId ? p.saves.some((save: any) => save.userId === currentAuthUserId) : false;
+
+      // Map tags with product and brand details, including required ProductTag fields
+      const tags: ProductTag[] = p.tags?.map((t: any): ProductTag => ({
+          id: t.id,
+          postId: t.postId, // Add postId
+          productId: t.productId, // Add productId
+          createdAt: t.created_at, // Add createdAt (map from snake_case)
+          xPosition: t.xPosition,
+          yPosition: t.yPosition,
+          product: t.product ? {
+              id: t.product.id,
+              name: t.product.name,
+              imageUrl: t.product.imageUrl ?? null,
+              // Construct Brand object correctly
+              brand: t.product.brand ? { id: t.product.brand.id, name: t.product.brand.name } : null,
+              description: null, // Assuming not selected
+              category: null,    // Assuming not selected
+          } : null, // Return null if t.product is null/undefined
+      })) || [];
+
       return {
         id: p.id,
         title: p.title,
         description: p.description,
         imageUrl: p.imageUrl,
         userId: p.userId,
-        createdAt: p.created_at, // Map from snake_case
-        updatedAt: p.updated_at, // Map from snake_case
-        // Set counts and relations to default/null values
-        _count: { 
-          likes: 0,
-          comments: 0,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        _count: {
+          likes: likesCount,
+          comments: 0, // TODO: Fetch comment count if needed
+          saves: savesCount,
         },
-        user: null,
-        tags: [],
-        isLiked: false, // Cannot determine like status without fetching
-        // isSaved: false, 
+         user: p.user ? { // Map user data if exists
+           id: p.user.id,
+           username: p.user.username,
+           name: p.user.name,
+           image: p.user.image, // Map 'image' column
+         } : null,
+         tags: tags,
+         comments: [], // Add empty comments array to satisfy type
+        isLiked: isLiked,
+        isSaved: isSaved,
       };
     }) || [];
 
-    console.log(`[API /posts] Mapped ${posts.length} posts (SIMPLIFIED).`); // Add log
+    console.log(`[API /posts] Mapped ${posts.length} posts.`);
 
     // Ensure total is not null
     const totalCount = total ?? 0;
@@ -99,18 +185,18 @@ export async function GET(req: NextRequest) {
       console.error('[API /posts] Error fetching posts (unknown type) (SIMPLIFIED):', error);
     }
     return NextResponse.json(
-      { error: '投稿一覧の取得に失敗しました (SIMPLIFIED)', details: error instanceof Error ? error.message : 'Unknown error' }, // Include details
+      { error: '投稿一覧の取得に失敗しました', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
-// 新しい投稿を作成 (POST handler remains the same for now, but might need simplification if GET fails)
+// 新しい投稿を作成
 export async function POST(req: NextRequest) {
   try {
     // 認証チェック
-    const userId = await requireAuth();
-    
+    const userId = await requireAuth(); // Use requireAuth here
+
     // リクエストボディを取得
     const formData = await req.formData();
     const title = formData.get('title') as string;
@@ -190,48 +276,80 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. 作成された投稿と関連データを取得して返す (SIMPLIFIED)
-    const { data: finalPostData, error: finalFetchError } = await supabase
-      .from('Post') // Use PascalCase
+    // 3. Fetch the complete post data including relations after creation
+    const { data: completePostData, error: fetchCompleteError } = await supabase
+      .from('Post')
       .select(`
         id,
         title,
         description,
         imageUrl,
-        createdAt,
-        updatedAt, 
-        userId
-      `) // Simplified select
+        created_at,
+        updated_at,
+        userId,
+        user:User ( id, username, name, image ), // Select 'image' column
+        likes:Like ( userId ),
+        saves:Save ( userId ),
+        tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, brand:Brand ( id, name ) ) )
+      `)
       .eq('id', postId)
       .single();
 
-    if (finalFetchError || !finalPostData) {
-      console.error('Error fetching created post (SIMPLIFIED):', finalFetchError);
-      // Return basic info if fetch fails
-      return NextResponse.json({ id: postId, title, description, imageUrl: uploadResult.url, userId }); 
+    // Cast the fetched data to the defined interface
+    const typedCompletePostData = completePostData as CompletePostDataFromSupabase | null;
+
+    if (fetchCompleteError || !typedCompletePostData) {
+        console.error('Error fetching complete created post:', fetchCompleteError);
+        // Fallback to returning the basic info if the detailed fetch fails
+        return NextResponse.json({ id: postId, title, description, imageUrl: uploadResult.url, userId, _count: { likes: 0, comments: 0, saves: 0 }, user: null, tags: [], isLiked: false, isSaved: false });
     }
-    
-    // Map response similar to GET (SIMPLIFIED)
-    const finalPost: PostType = {
-        id: finalPostData.id,
-        title: finalPostData.title,
-        description: finalPostData.description,
-        imageUrl: finalPostData.imageUrl,
-        userId: finalPostData.userId,
-        createdAt: finalPostData.createdAt,
-        updatedAt: finalPostData.updatedAt, // Add if exists
-        _count: { // Counts will be 0 for a new post
-            likes: 0,
-            comments: 0,
+
+
+    // Map the complete data using the typed variable
+    const completePost: PostType = {
+        id: typedCompletePostData.id,
+        title: typedCompletePostData.title,
+        description: typedCompletePostData.description,
+        imageUrl: typedCompletePostData.imageUrl,
+        userId: typedCompletePostData.userId,
+        createdAt: typedCompletePostData.created_at,
+        updatedAt: typedCompletePostData.updated_at,
+        _count: {
+            likes: typedCompletePostData.likes?.length ?? 0,
+            comments: 0, // Assuming comments are handled separately
+            saves: typedCompletePostData.saves?.length ?? 0,
         },
-        user: null, // Simplified
-        tags: [],   // Simplified
-        isLiked: false, 
-        // isSaved: false, 
+         // Map user directly using the typed data
+         user: typedCompletePostData.user ? {
+             id: typedCompletePostData.user.id,
+             username: typedCompletePostData.user.username,
+             name: typedCompletePostData.user.name,
+             image: typedCompletePostData.user.image, // Map 'image' column
+         } : null,
+         comments: [], // Add empty comments array
+         tags: typedCompletePostData.tags?.map((t): ProductTag => ({ // Use inferred type 't'
+             id: t.id,
+             postId: t.postId,
+             productId: t.productId,
+             createdAt: t.created_at,
+            xPosition: t.xPosition,
+            yPosition: t.yPosition,
+            product: t.product ? {
+                id: t.product.id,
+                name: t.product.name,
+                imageUrl: t.product.imageUrl ?? null,
+                brand: t.product.brand ? { id: t.product.brand.id, name: t.product.brand.name } : null,
+                description: null,
+                category: null,
+            } : null,
+        })) || [],
+        // For a newly created post, isLiked and isSaved are false for the creator
+        isLiked: false,
+        isSaved: false,
     };
 
 
-    return NextResponse.json(finalPost);
+    return NextResponse.json(completePost);
   } catch (error) {
     // Keep existing error handling structure
     console.error('Error creating post:', error);

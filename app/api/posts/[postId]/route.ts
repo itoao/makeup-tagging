@@ -2,7 +2,59 @@ import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth, hasAccessToResource, getUserId } from '@/lib/auth';
 import { uploadImage, deleteImage } from '@/lib/supabase-storage';
-import { ProductTag, Product, Brand, Category } from '@/src/types/product'; // Use ProductTag
+// Import PostType as well
+import { ProductTag, Product, Brand, Category, Post as PostType, UserProfile } from '@/src/types/product';
+
+// Define interfaces for the GET request Supabase query result
+interface SingleSupabaseUser {
+  id: string;
+  username: string;
+  name: string | null;
+  image: string | null; // Use correct column name 'image'
+}
+interface SingleSupabaseLike {
+  userId: string;
+}
+interface SingleSupabaseSave {
+  userId: string;
+}
+interface SingleSupabaseBrand {
+    id: string;
+    name: string;
+}
+interface SingleSupabaseProduct {
+    id: string;
+    name: string;
+    imageUrl: string | null;
+    brand: SingleSupabaseBrand | null;
+}
+interface SingleSupabaseTag {
+    id: string;
+    postId: string;
+    productId: string;
+    created_at: string;
+    xPosition: number;
+    yPosition: number;
+    product: SingleSupabaseProduct | null;
+}
+interface SingleSupabaseCommentInfo {
+    count: number;
+}
+interface SinglePostDataFromSupabase {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string;
+  created_at: string;
+  updated_at: string;
+  userId: string;
+  user: SingleSupabaseUser | null; // Expecting object or null
+  likes: SingleSupabaseLike[];
+  saves: SingleSupabaseSave[];
+  tags: SingleSupabaseTag[];
+  comments: SingleSupabaseCommentInfo[]; // Expecting array with one count object
+}
+
 
 // 投稿の詳細を取得
 export async function GET(
@@ -11,128 +63,98 @@ export async function GET(
 ) {
   try {
     const postId = params.postId;
-    const currentUserId = await getUserId();
+    console.log(`[API /posts/${postId}] Fetching post details for ID: ${postId}`); // Log incoming request
+    const currentUserId = await getUserId(); // Can be null if user is not logged in
 
-    // --- DEBUGGING START ---
-    console.log(`DEBUG: Attempting to fetch post with ID: ${postId}`);
-    const { data: allPosts, error: allPostsError } = await supabase
-      .from('Post')
-      .select('id');
-
-    if (allPostsError) {
-      console.error('DEBUG: Error fetching all post IDs:', allPostsError);
-    } else if (allPosts) {
-      console.log('DEBUG: Found post IDs in DB:', allPosts.map(p => p.id));
-      const found = allPosts.some(p => p.id === postId);
-      console.log(`DEBUG: Is requested post ID (${postId}) present in the list? ${found}`);
-      if (!found) {
-         console.log(`DEBUG: Post ID ${postId} NOT FOUND in the list fetched from DB.`);
-      }
-    } else {
-      console.log('DEBUG: No posts found at all in DB.');
-    }
-    // --- DEBUGGING END ---
-
-    // 投稿を取得
+    // 投稿を取得 - Include Likes and Saves with userId
     const { data: postData, error: postError } = await supabase
-      .from('Post') // Revert to PascalCase
+      .from('Post')
       .select(`
-        *,
-        User ( id, username, name, image ),
-        Tag (
-          *,
-          Product (
-            *,
-            Brand (*),
-            Category (*)
-          )
-        ),
-        Comment ( 
-          *, 
-          User ( id, username, name, image )
-        ),
-        Like ( count )
-      `) // Removed SavedPost ( count ) as the relationship is missing/causing errors
+        id,
+        title,
+        description,
+        imageUrl,
+        created_at,
+        updated_at,
+        userId,
+        user:User ( id, username, name, image ),
+        likes:Like ( userId ),
+        saves:Save ( userId ),
+        tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, brand:Brand ( id, name ) ) ),
+        comments:Comment ( count ) 
+      `) // Fetch comment count directly
       .eq('id', postId)
-      .order('created_at', { foreignTable: 'Comment', ascending: false }) // Use snake_case for Comment table
-      .limit(10, { foreignTable: 'Comment' }) // Revert to PascalCase
       .single();
 
+    console.log(`[API /posts/${postId}] Supabase query result:`, { data: postData, error: postError }); // Log query result
 
-    if (postError || !postData) {
+    // Cast the fetched data
+    const typedPostData = postData as SinglePostDataFromSupabase | null;
+
+    if (postError || !typedPostData) {
       if (postError && postError.code !== 'PGRST116') { // Ignore 'not found' error for now
          console.error('Error fetching post:', postError);
       }
-      // Removed debug log before returning 404
       return NextResponse.json(
         { error: '投稿が見つかりません' },
         { status: 404 }
       );
     }
 
-    // Map Supabase response structure
-    const post = {
-        ...postData,
-        _count: {
-            likes: postData.Like[0]?.count ?? 0, // Use PascalCase
-            comments: postData.Comment?.length ?? 0, // Use PascalCase
-            // saved count will be handled by the separate isSaved query below
-        },
-        Like: undefined, // Clean up
-        // SavedPost was removed from the main query
-        Comment: undefined, // Clean up comments array after mapping count
-        user: postData.User, // Map nested user
-        User: undefined, // Clean up
-        // Map tags relation from PascalCase
-        // Use ProductTag type
-        tags: postData.Tag?.map((t: ProductTag & { Product?: Product & { Brand?: Brand, Category?: Category } }) => ({
-            ...t,
-            product: t.Product ? {
-                ...t.Product,
-                brand: t.Product.Brand,
-                category: t.Product.Category,
-                Brand: undefined, // Clean up nested PascalCase
-                Category: undefined, // Clean up nested PascalCase
-            } : null,
-            Product: undefined, // Clean up nested PascalCase
-        })) || [],
-        Tag: undefined, // Clean up PascalCase relation name
+    // Map Supabase response structure to PostType using typedPostData
+    const likesCount = typedPostData.likes?.length ?? 0;
+    const savesCount = typedPostData.saves?.length ?? 0;
+    const commentsCount = typedPostData.comments?.[0]?.count ?? 0;
+    const isLiked = currentUserId ? typedPostData.likes.some((like) => like.userId === currentUserId) : false;
+    const isSaved = currentUserId ? typedPostData.saves.some((save) => save.userId === currentUserId) : false;
+
+    const tags: ProductTag[] = typedPostData.tags?.map((t): ProductTag => ({ // Use inferred type t
+        id: t.id,
+        postId: t.postId,
+        productId: t.productId,
+        createdAt: t.created_at,
+        xPosition: t.xPosition,
+        yPosition: t.yPosition,
+        product: t.product ? {
+            id: t.product.id,
+            name: t.product.name,
+            imageUrl: t.product.imageUrl ?? null,
+            brand: t.product.brand ? { id: t.product.brand.id, name: t.product.brand.name } : null,
+            description: null,
+            category: null,
+        } : null,
+    })) || [];
+
+    const post: PostType = {
+      id: typedPostData.id,
+      title: typedPostData.title,
+      description: typedPostData.description,
+      imageUrl: typedPostData.imageUrl,
+      userId: typedPostData.userId,
+      createdAt: typedPostData.created_at,
+      updatedAt: typedPostData.updated_at,
+      _count: {
+        likes: likesCount,
+        comments: commentsCount,
+        saves: savesCount,
+      },
+      // Map user directly using typed data
+      user: typedPostData.user ? {
+        id: typedPostData.user.id,
+        username: typedPostData.user.username,
+        name: typedPostData.user.name,
+        image: typedPostData.user.image, // Map 'image' column
+      } : null,
+      tags: tags,
+      comments: [], // Comments are not fetched in detail here, only count
+      isLiked: isLiked,
+      isSaved: isSaved,
     };
-
-
-    // 現在のユーザーがいいね/保存しているか確認 (Separate queries for now)
-    // TODO: Optimize this, potentially with RPC or modifying the main query
-    let isLiked = false;
-    let isSaved = false;
-
-    if (currentUserId) {
-      // いいね状態を確認
-      const { data: likeData, error: likeError } = await supabase
-        .from('Like') // Revert to PascalCase
-        .select('id', { count: 'exact' })
-        .eq('userId', currentUserId) // Revert to camelCase
-        .eq('postId', postId) // Revert to camelCase
-        .maybeSingle();
-      if (likeError) console.error("Error checking like status:", likeError);
-      isLiked = !!likeData;
-
-      // 保存状態を確認
-      const { data: savedData, error: savedError } = await supabase
-        .from('SavedPost') // Revert to PascalCase
-        .select('id', { count: 'exact' })
-        .eq('userId', currentUserId) // Revert to camelCase
-        .eq('postId', postId) // Revert to camelCase
-        .maybeSingle();
-      if (savedError) console.error("Error checking save status:", savedError);
-      isSaved = !!savedData;
-    }
 
     return NextResponse.json({
       ...post,
-      isLiked,
-      isSaved,
-      // Ensure post.user exists before accessing id
-      isOwner: currentUserId === post.user?.id, 
+      // Add isOwner flag
+      isOwner: currentUserId === post.userId,
     });
   } catch (error) {
     // Keep existing error handling
@@ -299,16 +321,15 @@ export async function PATCH(
       .from('Post') // Revert to PascalCase
       .select(`
         *,
-        User ( id, username, name, image ),
-        Tag (
-          *,
-          Product (
-            *,
-            Brand (*),
-            Category (*)
+        user:User ( id, username, name, image ), // Select 'image' column
+        tags:Tag (
+          id, postId, productId, created_at, xPosition, yPosition,
+          product:Product (
+            id, name, imageUrl,
+            brand:Brand (id, name)
           )
         )
-      `)
+      `) // Removed comments from select
       .eq('id', postId)
       .single();
 
@@ -318,26 +339,63 @@ export async function PATCH(
       return NextResponse.json({ id: postId, ...updateData }); 
     }
     
-    // Map response similar to GET
-    const finalUpdatedPost = {
-        ...finalUpdatedPostData,
-        user: finalUpdatedPostData.User,
-        User: undefined,
-        // Use ProductTag type
-        tags: finalUpdatedPostData.Tag?.map((t: ProductTag & { Product?: Product & { Brand?: Brand, Category?: Category } }) => ({
-            ...t,
-            product: t.Product ? {
-                ...t.Product,
-                brand: t.Product.Brand,
-                category: t.Product.Category,
-                Brand: undefined,
-                Category: undefined,
-            } : null,
-            Product: undefined,
-        })) || [],
-        Tag: undefined,
-    };
+    // Map response similar to GET, but use PostType and map counts/status
+    // Note: Likes/Saves/Comments counts are NOT fetched in the final select for PATCH,
+    // so we cannot reliably update them here without another fetch or passing them.
+    // We will return the updated post structure but counts/isLiked/isSaved might be stale
+    // if the goal is just to confirm the PATCH succeeded and return the core updated data.
+    // If fresh counts/status are needed, the client should refetch the post after PATCH.
 
+    const updatedTags: ProductTag[] = finalUpdatedPostData.tags?.map((t: any): ProductTag => ({
+        id: t.id,
+        postId: t.postId,
+        productId: t.productId,
+        createdAt: t.created_at,
+        xPosition: t.xPosition,
+        yPosition: t.yPosition,
+        product: t.product ? {
+            id: t.product.id,
+            name: t.product.name,
+            imageUrl: t.product.imageUrl ?? null,
+            brand: t.product.brand ? { id: t.product.brand.id, name: t.product.brand.name } : null,
+            description: null,
+            category: null,
+        } : null,
+    })) || [];
+
+    const finalUpdatedPost: PostType = {
+        id: finalUpdatedPostData.id,
+        title: finalUpdatedPostData.title,
+        description: finalUpdatedPostData.description,
+        imageUrl: finalUpdatedPostData.imageUrl,
+        userId: finalUpdatedPostData.userId,
+        createdAt: finalUpdatedPostData.created_at,
+        updatedAt: finalUpdatedPostData.updated_at,
+        _count: {
+            // Use potentially stale counts/status or omit them
+            likes: 0, // Omit or use stale data
+            comments: 0, // Omit or use stale data
+            saves: 0, // Omit or use stale data
+        },
+        // Use IIFE for user mapping
+        user: (() => {
+            const user = finalUpdatedPostData.user;
+            if (user && typeof user === 'object' && !Array.isArray(user)) {
+                return {
+                    id: user.id,
+                    username: user.username,
+                    name: user.name,
+                    image: user.image, // Map 'image' column
+                } as UserProfile;
+            }
+            return null;
+        })(),
+        tags: updatedTags,
+        comments: [], // Comments not fetched in detail
+        // Omit isLiked/isSaved or use stale data
+        // isLiked: updatedIsLiked,
+        // isSaved: updatedIsSaved,
+    };
 
     return NextResponse.json(finalUpdatedPost);
   } catch (error) {

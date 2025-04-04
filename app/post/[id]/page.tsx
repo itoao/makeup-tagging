@@ -18,7 +18,8 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ja } from "date-fns/locale";
 // Import correct types from the types file
-import { Post, Comment, ProductTag, Product, UserProfile } from "@/src/types/product"; // Use defined types
+import { Post, Comment, ProductTag, Product, UserProfile } from "@/src/types/product";
+import { useLikePost, useSavePost } from "@/hooks/use-interactions"; // Import hooks
 
 export default function PostDetailPage() {
   const { id } = useParams() as { id: string };
@@ -65,60 +66,26 @@ export default function PostDetailPage() {
     fetchPost()
   }, [id])
 
-  const handleLike = async () => {
+  const { mutate: likePost } = useLikePost();
+  const { mutate: savePost } = useSavePost();
+
+  const handleLikeClick = () => {
     if (!isSignedIn) {
-      toast.error("いいねするにはログインが必要です")
-      return
-    }
-    if (!post) return; // Ensure post is not null
-
-    try {
-      if (post.isLiked) { // Assuming isLiked is part of the fetched post data
-        await postApi.unlikePost(id)
-      } else {
-        await postApi.likePost(id)
-      }
-
-      // Update post state with explicit type for prevPost and safe _count update
-      setPost((prevPost: Post | null) => {
-        if (!prevPost) return null;
-        const currentIsLiked = prevPost.isLiked ?? false;
-        const currentLikes = prevPost._count?.likes ?? 0;
-        const currentComments = prevPost._count?.comments ?? 0; // Ensure comments count is preserved
-        return {
-          ...prevPost,
-          isLiked: !currentIsLiked,
-          _count: { // Ensure both counts are present
-            likes: currentIsLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1,
-            comments: currentComments, // Keep existing comments count
-          },
-        };
-      });
-    } catch (err) {
-      console.error("Like/Unlike error:", err); // Log the actual error
-      toast.error("操作に失敗しました")
-    }
-  }
-
-  const handleSave = async () => {
-    if (!isSignedIn) {
-      toast.error("保存するにはログインが必要です")
-      return
+      toast.error("いいねするにはログインが必要です");
+      return;
     }
     if (!post) return;
+    likePost({ postId: post.id, isLiked: !!post.isLiked });
+  };
 
-    // TODO: Implement save functionality via API
-    toast.info("この機能は現在開発中です")
-    // Example state update (assuming isSaved property exists)
-    // setPost(prevPost => {
-    //   if (!prevPost) return null;
-    //   return {
-    //     ...prevPost,
-    //     isSaved: !prevPost.isSaved,
-    //     // Optionally update save count if available
-    //   };
-    // });
-  }
+  const handleSaveClick = () => {
+    if (!isSignedIn) {
+      toast.error("保存するにはログインが必要です");
+      return;
+    }
+    if (!post) return;
+    savePost({ postId: post.id, isSaved: !!post.isSaved });
+  };
 
   const handleShare = () => {
     if (!post) return;
@@ -172,13 +139,15 @@ export default function PostDetailPage() {
       // Update comment count with explicit type for prevPost and safe _count update
       setPost((prevPost: Post | null) => {
         if (!prevPost) return null;
-        const currentLikes = prevPost._count?.likes ?? 0; // Ensure likes count is preserved
+        const currentLikes = prevPost._count?.likes ?? 0;
         const currentComments = prevPost._count?.comments ?? 0;
+        const currentSaves = prevPost._count?.saves ?? 0; // Get saves count
         return {
           ...prevPost,
-          _count: { // Ensure both counts are present
-            likes: currentLikes, // Keep existing likes count
+          _count: {
+            likes: currentLikes,
             comments: currentComments + 1,
+            saves: currentSaves, // Include saves count
           },
         };
       });
@@ -209,13 +178,15 @@ export default function PostDetailPage() {
       // Update comment count with explicit type for prevPost and safe _count update
       setPost((prevPost: Post | null) => {
         if (!prevPost) return null;
-        const currentLikes = prevPost._count?.likes ?? 0; // Ensure likes count is preserved
+        const currentLikes = prevPost._count?.likes ?? 0;
         const currentComments = prevPost._count?.comments ?? 0;
+        const currentSaves = prevPost._count?.saves ?? 0; // Get saves count
         return {
           ...prevPost,
-          _count: { // Ensure both counts are present
-            likes: currentLikes, // Keep existing likes count
+          _count: {
+            likes: currentLikes,
             comments: Math.max(0, currentComments - 1),
+            saves: currentSaves, // Include saves count
           },
         };
       });
@@ -367,10 +338,10 @@ export default function PostDetailPage() {
               variant={post.isLiked ? "default" : "outline"}
               size="sm"
               className="flex items-center gap-1"
-              onClick={handleLike}
+              onClick={handleLikeClick} // Use hook handler
               disabled={!isSignedIn} // Disable if not signed in
             >
-              {/* Always show Heart icon, fill based on local isLiked state */}
+              {/* Always show Heart icon, fill based on post.isLiked state */}
               <Heart className={`h-4 w-4 ${post.isLiked ? "fill-current text-red-500" : ""}`} />
               {/* Use _count.likes */}
               <span>{post._count?.likes ?? 0}</span>
@@ -399,10 +370,10 @@ export default function PostDetailPage() {
               variant={"outline"} // Default to outline as isSaved isn't fetched
               size="sm"
               className="flex items-center gap-1 ml-auto"
-              onClick={handleSave}
+              onClick={handleSaveClick} // Use hook handler
               disabled={!isSignedIn} // Disable if not signed in
             >
-              {/* Always show Bookmark icon */}
+              {/* Always show Bookmark icon, fill based on post.isSaved state */}
               <Bookmark className={`h-4 w-4 ${post.isSaved ? "fill-current" : ""}`} />
               <span className="hidden sm:inline">保存</span> {/* Hide text on small screens */}
             </Button>

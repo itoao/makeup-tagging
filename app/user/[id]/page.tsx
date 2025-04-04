@@ -1,28 +1,40 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
-import { userApi, postApi } from "@/lib/api"
-import { MakeupPost } from "@/components/makeup-post"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Skeleton } from "@/components/ui/skeleton"
-import { useUser } from "@clerk/nextjs"
-import { UserProfile, Post } from "@/src/types/product" // Import types
-import Link from "next/link"
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import { userApi, postApi } from "@/lib/api";
+import { MakeupPost } from "@/components/makeup-post";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useUser } from "@clerk/nextjs";
+// Define a type for the expected API response for user profile
+import { UserProfile, Post } from "@/src/types/product";
+import Link from "next/link";
+import { useFollowUser } from "@/hooks/use-interactions"; // Import the hook
+
+// Define the expected shape of the data returned by userApi.getProfile
+interface UserProfileApiResponse extends UserProfile {
+  isFollowing: boolean;
+  isCurrentUser: boolean;
+  // _count should be part of UserProfile now
+}
+
 
 export default function UserProfilePage() {
-  // Get userId from route parameters instead of username
-  const { id: userId } = useParams() as { id: string } 
-  const { user: currentUser } = useUser()
-  const [profile, setProfile] = useState<UserProfile | null>(null) // Use UserProfile type
-  const [posts, setPosts] = useState<Post[]>([]) // Use Post[] type
-  const [loading, setLoading] = useState(true)
-  const [postsLoading, setPostsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState("posts")
-  const [isFollowing, setIsFollowing] = useState(false)
+  const { id: userId } = useParams() as { id: string };
+  const { user: currentUser } = useUser();
+  // State for the core profile data
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  // Separate state for isFollowing, managed by API response and local updates
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("posts");
+  // Remove local isFollowing state, rely on fetched data
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -33,89 +45,77 @@ export default function UserProfilePage() {
       }
       
       try {
-        setLoading(true)
-        // Fetch profile using userId
-        const { data, error } = await userApi.getProfile(userId) 
-        
-        if (error) {
-          setError(error)
-          return
-        }
+        setLoading(true);
+        // Fetch profile using userId, expect UserProfileApiResponse
+        const response = await userApi.getProfile(userId);
+        const data = response.data as UserProfileApiResponse | null; // Cast response data
 
-        if (data) {
-          setProfile(data);
-          // isFollowing is managed by local state, not fetched profile data based on current types
-          // setIsFollowing(data.isFollowing ?? false); // Remove this line
+        if (response.error || !data) {
+          setError(response.error || "ユーザーデータの取得に失敗しました");
+          return
+        } else {
+          setProfile(data); // Set the core profile data
+          setIsFollowing(data.isFollowing); // Set following status from API response
         }
-      } catch (err) {
-        setError("プロフィールの読み込み中にエラーが発生しました");
+      } catch (err: any) {
+        setError(err.message || "プロフィールの読み込み中にエラーが発生しました");
       } finally {
         setLoading(false)
       }
     }
 
     fetchProfile()
-    // Depend on userId
-  }, [userId]) 
+  }, [userId]);
 
   useEffect(() => {
     const fetchPosts = async () => {
-      if (!profile) return
-      
+      // Fetch posts only if userId is available (profile might still be loading)
+      console.log('a')
+      if (!userId) return;
+
       try {
-        setPostsLoading(true)
-        const { data, error } = await postApi.getPosts({ userId: profile.id })
-        
+        setPostsLoading(true);
+        // Fetch posts using userId directly
+        const { data, error } = await postApi.getPosts({ userId: userId });
+
         if (error) {
-          console.error("Error fetching posts:", error)
+          console.error("Error fetching posts:", error);
           return
         }
 
+        // Log the fetched data
+        console.log("Fetched posts data:", data);
+
         // Access posts via data.posts based on PostsApiResponse type
         if (data && data.posts) {
-          setPosts(data.posts)
+          console.log(`Setting ${data.posts.length} posts to state.`);
+          setPosts(data.posts);
+        } else {
+          console.log("No posts found in data or data is null.");
+          setPosts([]); // Ensure posts state is an empty array if no posts found
         }
       } catch (err) {
-        console.error("Error fetching posts:", err)
+        console.error("Error fetching posts:", err);
       } finally {
         setPostsLoading(false)
       }
     }
 
     fetchPosts()
-  }, [profile])
+    // Depend on userId instead of profile to fetch posts when userId changes
+  }, [userId]) 
 
-  const handleFollow = async () => {
-    if (!profile || !userId) return // Also ensure userId is available for follow/unfollow
-    
-    try {
-      if (isFollowing) {
-        // Use userId for unfollow
-        await userApi.unfollowUser(userId) 
-        setIsFollowing(false)
-      } else {
-        // Use userId for follow
-        await userApi.followUser(userId) 
-        setIsFollowing(true)
-      }
+  const { mutate: followUser } = useFollowUser();
 
-      // Update follower count - _count is removed from UserProfile, so this update is no longer possible here.
-      // Consider fetching updated profile data if follower count needs to be displayed accurately after follow/unfollow.
-      // setProfile(prev => {
-      //   if (!prev) return null;
-      //   const currentFollowers = prev._count?.followers ?? 0;
-      //   return {
-      //     ...prev,
-      //     _count: {
-      //       ...(prev._count ?? {}), // Ensure _count exists
-      //       followers: isFollowing ? Math.max(0, currentFollowers - 1) : currentFollowers + 1,
-      //     },
-      //   };
-      // });
-    } catch (err) {
-      console.error("Error following/unfollowing user:", err)
-    }
-  }
+  const handleFollowClick = () => {
+    if (!userId) return; // Ensure userId is available
+    // Pass the current following state to the mutation
+    followUser({ userId, isFollowing });
+    // Optimistic update for isFollowing state is handled within the hook's onMutate
+    // We also update the local isFollowing state for immediate UI feedback
+    // The hook will handle cache updates for the profile data (_count.followers)
+    setIsFollowing(!isFollowing);
+  };
 
   if (loading) {
     return (
@@ -155,7 +155,7 @@ export default function UserProfilePage() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row gap-6 items-start mb-8">
         <Avatar className="h-24 w-24">
-          {/* Use profile.image based on updated UserProfile type */}
+          {/* Use profile.image based on UserProfile type */}
           <AvatarImage src={profile.image || "/placeholder-user.jpg"} alt={profile.username} />
           <AvatarFallback>{profile.username[0].toUpperCase()}</AvatarFallback>
         </Avatar>
@@ -165,9 +165,11 @@ export default function UserProfilePage() {
             <h1 className="text-2xl font-bold">{profile.name || profile.username}</h1>
             
             {!isCurrentUser ? (
-              <Button 
+              <Button
                 variant={isFollowing ? "outline" : "default"}
-                onClick={handleFollow}
+                onClick={handleFollowClick} // Use the new handler
+                // Disable button while mutation is pending? (Optional)
+                // disabled={followMutation.isLoading}
               >
                 {isFollowing ? "フォロー中" : "フォローする"}
               </Button>
@@ -178,14 +180,14 @@ export default function UserProfilePage() {
             )}
           </div>
 
-          {/* bio is removed from UserProfile type */}
+          {/* bio is optional, display if present */}
           {/* <p className="text-muted-foreground mb-4">{profile.bio || "自己紹介はまだありません"}</p> */}
 
-          {/* _count is removed from UserProfile type, remove stats display */}
-          {/*
+          {/* Display stats using _count from profile */}
           <div className="flex gap-6">
             <div className="text-center">
-              <div className="font-medium">{profile._count?.posts ?? 0}</div>
+              {/* Posts count might need separate fetching */}
+              <div className="font-medium">{profile._count?.posts ?? posts.length}</div>
               <div className="text-sm text-muted-foreground">投稿</div>
             </div>
             <div className="text-center">
@@ -197,7 +199,6 @@ export default function UserProfilePage() {
               <div className="text-sm text-muted-foreground">フォロー中</div>
             </div>
           </div>
-          */}
         </div>
       </div>
 
@@ -224,21 +225,8 @@ export default function UserProfilePage() {
           ) : posts.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {posts.map((post) => (
-                <MakeupPost
-                  key={post.id}
-                  // Use post.user based on updated Post type
-                  username={post.user?.username ?? 'unknown'}
-                  // Use post.imageUrl based on updated Post type
-                  imageUrl={post.imageUrl}
-                  // Use post.title based on updated Post type
-                  title={post.title ?? 'Untitled'}
-                  // Use post._count.likes based on updated Post type
-                  likes={post._count?.likes ?? 0}
-                  // Use post._count.comments based on updated Post type
-                  comments={post._count?.comments ?? 0}
-                  productCount={post.tags?.length ?? 0}
-                  postId={post.id}
-                />
+                // Pass the full post object to MakeupPost
+                <MakeupPost key={post.id} post={post} />
               ))}
             </div>
           ) : (

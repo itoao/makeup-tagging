@@ -218,6 +218,20 @@ export const postApi = {
     });
   },
 
+  // 投稿を保存（ブックマーク）する
+  savePost: (postId: string) => {
+    return apiRequest<{ success: boolean; saveCount?: number }>(`/posts/${postId}/save`, {
+      method: 'POST',
+    });
+  },
+
+  // 投稿の保存（ブックマーク）を解除する
+  unsavePost: (postId: string) => {
+    return apiRequest<{ success: boolean; saveCount?: number }>(`/posts/${postId}/save`, {
+      method: 'DELETE',
+    });
+  },
+
   // 投稿のコメント一覧を取得
   getComments: (postId: string, params?: { page?: number; limit?: number }) => {
     const queryParams = new URLSearchParams();

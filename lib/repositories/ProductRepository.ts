@@ -15,24 +15,36 @@ export const fetchProducts = async (): Promise<{ data: Product[] | null; error: 
       name, 
       description, 
       price, 
-      "brandId", 
-      "categoryId", 
-      "imageUrl", 
+      brandId,  
+      categoryId, 
+      imageUrl, 
       created_at, 
       updated_at,
-      brand: Brand (id, name),  // Select specific columns from Brand
-      category: Category (id, name) // Select specific columns from Category
-    `);
+      brand: Brand (id, name),
+      category: Category (id, name)
+    `); // Use correct column names (camelCase for FKs, snake_case for timestamps)
 
   if (error) {
     console.error('Error fetching products:', error);
     return { data: null, error };
   }
 
-  // Type assertion: Assuming the fetched data structure now correctly matches the Product type
-  // including the nested 'brand' and 'category' objects due to the corrected select query.
-  // For robust applications, consider using Supabase generated types or Zod validation.
-  const products: Product[] = data as Product[];
+  // Map the data explicitly to the Product type
+  const products: Product[] = data.map((item: any) => ({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    price: item.price,
+    brandId: item.brandId,
+    categoryId: item.categoryId,
+    imageUrl: item.imageUrl,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+    // Handle potential array for brand/category due to Supabase typing quirks
+    brand: Array.isArray(item.brand) ? item.brand[0] ?? null : item.brand ?? null,
+    category: Array.isArray(item.category) ? item.category[0] ?? null : item.category ?? null,
+  }));
+
 
   return { data: products, error: null };
 };

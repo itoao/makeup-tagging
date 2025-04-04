@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
 import { getUserId } from '@/lib/auth';
-// TODO: Import generated Supabase types if available
+import { UserProfile } from '@/src/types/product'; // Import UserProfile type
+
+// Define interfaces for Supabase query results
+interface SupabaseFollower {
+  followerId: string;
+}
+interface SupabaseFollowing {
+  followingId: string;
+}
+interface UserDataFromSupabase {
+  id: string;
+  username: string;
+  name: string | null;
+  image: string | null; // Assuming 'image' is the avatar column name
+  created_at: string;
+  followers: SupabaseFollower[]; // Array of followers
+  following: SupabaseFollowing[]; // Array of users being followed
+}
 
 // ユーザー情報を取得
 export async function GET(
@@ -12,25 +29,24 @@ export async function GET(
   try {
     // Get userId (identifier) from params
     const userId = params.identifier;
-    const currentUserId = await getUserId(); // Still needed for isCurrentUser check
+    const currentUserId = await getUserId(); // Can be null if user is not logged in
 
-    console.log(`[API] Fetching user with ID: ${userId}`); // Add logging
+    console.log(`[API] Fetching user with ID: ${userId}, currentAuthUser: ${currentUserId ?? 'none'}`);
 
-    // ユーザーを取得 - identifier is always treated as userId
-    // Use PascalCase table names and camelCase column names based on provided schema
-    // EXTREMELY SIMPLIFIED select statement for debugging
+    // ユーザーを取得し、フォロー関係も取得
     const { data: userData, error: userError } = await supabase
-      .from('User') // Use PascalCase table name "User"
+      .from('User')
       .select(`
         id,
         username,
         name,
         image,
-        created_at 
-      `) // Select ONLY direct fields from User table
-      // Always filter by 'id' column using userId
+        created_at,
+        followers:Follow!followingId ( followerId ), 
+        following:Follow!followerId ( followingId ) 
+      `) // Fetch follower/following IDs
       .eq('id', userId)
-      .maybeSingle(); // Use maybeSingle to return null instead of error if not found
+      .maybeSingle();
 
     // Check for errors during the query execution
     if (userError) {
@@ -48,29 +64,51 @@ export async function GET(
       );
     }
 
-    console.log(`[API] User found:`, userData);
+    console.log(`[API] User data fetched:`, userData);
 
-     // Map basic user data (no counts or relations)
-     const user = {
-        id: userData.id,
-        username: userData.username,
-        name: userData.name,
-        image: userData.image,
-        createdAt: userData.created_at, // Map from snake_case
-     };
+    // Cast the fetched data
+    const typedUserData = userData as UserDataFromSupabase | null;
+
+    if (!typedUserData) {
+      console.log(`[API] User not found after cast with ID: ${userId}`);
+      return NextResponse.json(
+        { error: 'ユーザーが見つかりません' },
+        { status: 404 }
+      );
+    }
+
+    // フォロー状態を確認 (currentUserId が存在する場合のみ)
+    const isFollowing = currentUserId
+      ? typedUserData.followers.some(f => f.followerId === currentUserId)
+      : false;
+
+    // Map to UserProfile type
+    const userProfile: UserProfile = {
+      id: typedUserData.id,
+      username: typedUserData.username,
+      name: typedUserData.name,
+      image: typedUserData.image, // Map 'image' to 'image'
+      // Add counts
+      _count: {
+        followers: typedUserData.followers?.length ?? 0,
+        following: typedUserData.following?.length ?? 0,
+        // posts count needs a separate query or join if required
+      }
+    };
+
 
     return NextResponse.json({
-      ...user,
-      // isFollowing is removed as we are not fetching relations
-      isCurrentUser: currentUserId === user.id,
+      ...userProfile,
+      isFollowing: isFollowing, // Add isFollowing status
+      isCurrentUser: currentUserId === userProfile.id,
     });
-    
-  } catch (error: any) { // Catch any potential error, including auth errors
-    console.error('[API] Error in GET /api/users/[identifier]:', error); 
-    // Check if it's an auth error from getUserId()
-    if (error.message === '認証が必要です') {
-         return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-    }
+
+  } catch (error: any) {
+    console.error('[API] Error in GET /api/users/[identifier]:', error);
+    // Keep existing auth error check if needed, otherwise simplify
+    // if (error.message === '認証が必要です') {
+    //      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    // }
     return NextResponse.json(
       { error: 'ユーザー情報の取得中に予期せぬエラーが発生しました', details: error.message },
       { status: 500 }
