@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth, hasAccessToResource, getUserId } from '@/lib/auth';
 import { uploadImage, deleteImage } from '@/lib/supabase-storage';
-// Import PostType as well
-import { ProductTag, Product, Brand, Category, Post as PostType, UserProfile } from '@/src/types/product';
+// Use import type and correct paths for moved types
+import type { ProductTag, Post as PostType } from '@/src/types/post';
+import type { UserProfile } from '@/src/types/user';
+import type { Product, Brand, Category } from '@/src/types/product';
 
 // Define interfaces for the GET request Supabase query result
 interface SingleSupabaseUser {

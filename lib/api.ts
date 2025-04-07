@@ -1,21 +1,23 @@
 import { toast } from 'sonner';
-import {
+// Use import type and correct paths for moved types
+import type {
   ApiRequestOptions,
-  PaginatedUsers,
-  UserProfile,
-  // PaginatedPosts, // Removed generic type
-  PostsApiResponse, // Import the specific type
-  Post,
-  // Like,
-  PaginatedComments,
-  Comment,
   PaginatedProducts,
   Product,
   PaginatedBrands,
   Brand,
   PaginatedCategories,
   Category,
-} from '@/src/types/product'; // Adjust path if necessary
+} from '@/src/types/product'; // Types still in product.ts
+import type { UserProfile } from '@/src/types/user'; // Moved to user.ts
+// Import PaginatedUsers from user.ts
+import type { PaginatedUsers } from '@/src/types/user';
+import type {
+  PostsApiResponse,
+  Post,
+  PaginatedComments,
+  Comment,
+} from '@/src/types/post'; // Moved to post.ts
 
 // APIリクエストの基本設定
 const API_BASE_URL = '/api';

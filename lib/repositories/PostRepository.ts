@@ -1,106 +1,88 @@
 import supabase from '@/lib/supabase';
-import { PostgrestSingleResponse, PostgrestResponse } from '@supabase/supabase-js';
+import type { PostgrestSingleResponse, PostgrestResponse } from '@supabase/supabase-js'; // Use import type
 import type { Database } from '@/src/types/supabase'; // Attempt to import, may fail if file is empty/invalid
 import type { Post as PostType, ProductTag } from '@/src/types/post';
 import type { UserProfile } from '@/src/types/user';
 import type { Product, Brand } from '@/src/types/product';
 
-// TODO: Integrate generated Supabase types (Database['public']['Tables']['...']) once src/types/supabase.ts generation is fixed.
-// Using manually defined helper types for now based on expected query results.
+// Define types using generated Database types
+type PostRow = Database['public']['Tables']['Post']['Row'];
+type UserRow = Database['public']['Tables']['User']['Row'];
+type LikeRow = Database['public']['Tables']['Like']['Row'];
+type SaveRow = Database['public']['Tables']['Save']['Row'];
+type TagRow = Database['public']['Tables']['Tag']['Row'];
+type ProductRow = Database['public']['Tables']['Product']['Row'];
+type BrandRow = Database['public']['Tables']['Brand']['Row'];
 
-// Helper type for the complex select query result (manual definition)
-// This should ideally be derived from generated types
-type PostWithRelationsManual = {
-  id: string;
-  title: string;
-  description: string | null;
-  imageUrl: string;
-  created_at: string;
-  updated_at: string;
-  userId: string;
-  // Adjust user type to potentially be an array from Supabase
-  user: {
-    id: string;
-    username: string;
-    name: string | null;
-    image: string | null;
-  }[] | null; // Expecting array or null
-  likes: { userId: string }[];
-  saves: { userId: string }[];
-  tags: {
-    id: string;
-    postId: string;
-    productId: string;
-    created_at: string;
-    xPosition: number;
-    yPosition: number;
-    // Adjust product and brand types to potentially be arrays
-    product: {
-      id: string;
-      name: string;
-      imageUrl: string | null;
-      brand: {
-        id: string;
-        name: string;
-      }[] | null; // Expecting array or null for brand
-      // Add other product fields if they were selected
-      description: string | null;
-    }[] | null; // Expecting array or null for product
-  }[];
+// Type for the complex select query result using generated types
+// Adjust based on the actual select statement structure and Supabase behavior
+type PostWithRelations = Omit<PostRow, 'userId'> & { // Omit original userId if user object is present
+  userId: string; // Ensure userId is always string (not null if user exists)
+  user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null; // Select specific user fields
+  likes: Pick<LikeRow, 'userId'>[];
+  saves: Pick<SaveRow, 'userId'>[];
+  tags: (Pick<TagRow, 'id' | 'postId' | 'productId' | 'created_at' | 'xPosition' | 'yPosition'> & {
+    product: (Pick<ProductRow, 'id' | 'name' | 'imageUrl' | 'description'> & { // Select specific product fields
+      brand: Pick<BrandRow, 'id' | 'name'> | null; // Select specific brand fields
+    }) | null;
+  })[];
 };
 
-// Helper function to map Supabase row to our PostType
-// Moved mapping logic here from API route
-const mapSupabaseRowToPostType = (p: PostWithRelationsManual, currentAuthUserId: string | null): PostType => {
+
+// Helper function to map Supabase row (using generated types) to our PostType
+const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: string | null): PostType => {
   const likesCount = p.likes?.length ?? 0;
   const savesCount = p.saves?.length ?? 0;
-  const isLiked = currentAuthUserId ? p.likes.some(like => like.userId === currentAuthUserId) : false;
-  const isSaved = currentAuthUserId ? p.saves.some(save => save.userId === currentAuthUserId) : false;
+  // Explicitly type callback parameters
+  const isLiked = currentAuthUserId ? p.likes.some((like: Pick<LikeRow, 'userId'>) => like.userId === currentAuthUserId) : false;
+  const isSaved = currentAuthUserId ? p.saves.some((save: Pick<SaveRow, 'userId'>) => save.userId === currentAuthUserId) : false;
 
-  const tags: ProductTag[] = p.tags?.map((t): ProductTag => ({
+  // Map tags using generated types
+  const tags: ProductTag[] = p.tags?.map((t): ProductTag => ({ // t is inferred based on PostWithRelations['tags']
       id: t.id,
-      postId: t.postId,
-      productId: t.productId,
-      createdAt: t.created_at,
+      postId: t.postId, // Assuming postId is selected or available on TagRow
+      productId: t.productId, // Assuming productId is selected or available on TagRow
+      createdAt: t.created_at, // Map from snake_case
       xPosition: t.xPosition,
       yPosition: t.yPosition,
-      // Handle product and brand potentially being arrays
-      product: t.product && t.product.length > 0 ? {
-          id: t.product[0].id,
-          name: t.product[0].name,
-          imageUrl: t.product[0].imageUrl ?? null,
-          brand: t.product[0].brand && t.product[0].brand.length > 0 ? {
-            id: t.product[0].brand[0].id,
-            name: t.product[0].brand[0].name
+      // Map product and brand directly using selected fields
+      product: t.product ? {
+          id: t.product.id,
+          name: t.product.name,
+          imageUrl: t.product.imageUrl ?? null,
+          brand: t.product.brand ? { // brand is Pick<BrandRow, 'id' | 'name'> | null
+            id: t.product.brand.id,
+            name: t.product.brand.name
           } : null,
-          description: t.product[0].description, // Map description
-          category: null, // Category not selected here
-          // price: t.product[0].price, // Map if needed
+          description: t.product.description, // Map description
+          category: null, // Category not selected in the query
+          // price: t.product.price, // Map if needed and selected
       } : null,
   })) || [];
 
+  // Construct PostType using fields from PostWithRelations 'p'
   return {
-    id: p.id,
-    title: p.title,
-    description: p.description,
-    imageUrl: p.imageUrl,
-    userId: p.userId,
-    createdAt: p.created_at,
-    updatedAt: p.updated_at,
+    id: p.id, // From PostRow
+    title: p.title, // From PostRow
+    description: p.description, // From PostRow
+    imageUrl: p.imageUrl, // From PostRow
+    userId: p.userId, // Use the non-null userId from PostWithRelations
+    createdAt: p.created_at, // From PostRow
+    updatedAt: p.updated_at, // From PostRow
     _count: {
       likes: likesCount,
       comments: 0, // Assuming comment count is fetched elsewhere or not needed here
       saves: savesCount,
     },
-     // Handle user potentially being an array
-     user: p.user && p.user.length > 0 ? {
-       id: p.user[0].id,
-       username: p.user[0].username,
-       name: p.user[0].name,
-       image: p.user[0].image,
+     // Map user directly using selected fields
+     user: p.user ? { // p.user is Pick<UserRow, ...> | null
+       id: p.user.id,
+       username: p.user.username,
+       name: p.user.name,
+       image: p.user.image,
      } : null,
      tags: tags,
-     comments: [], // Default empty array
+     comments: [], // Default empty array for now
     isLiked: isLiked,
     isSaved: isSaved,
   };
@@ -126,7 +108,9 @@ export const findManyPosts = async (
   const from = skip;
   const to = skip + limit - 1;
 
-  // Define the select statement here
+  // Define the select statement matching PostWithRelations structure
+  // Note: Supabase client might infer types better if select isn't a raw string,
+  // but using string for clarity based on previous code. Ensure it matches the type.
   const selectStatement = `
     id,
     title,
@@ -135,15 +119,17 @@ export const findManyPosts = async (
     created_at,
     updated_at,
     userId,
-    user:User ( id, username, name, image ),
+    user:User!inner ( id, username, name, image ),
     likes:Like ( userId ),
     saves:Save ( userId ),
     tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) )
-  `; // Added description to product select
+  `; // Ensure selected fields match PostWithRelations
 
+  // Use type parameter with the query for better type safety from Supabase client
   let query = supabase
     .from('Post')
-    .select(selectStatement, { count: 'exact' })
+    // Specify the expected return type based on the select statement
+    .select<string, PostWithRelations>(selectStatement, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to);
 
@@ -158,10 +144,10 @@ export const findManyPosts = async (
     return { posts: [], total: 0, error: new Error(error.message) };
   }
 
-  // Use manual type assertion for now
-  const typedData = data as PostWithRelationsManual[] | null;
+  // Data should now be typed as PostWithRelations[] | null by the Supabase client
+  // No need for manual type assertion 'as PostWithRelationsManual[]'
 
-  const posts: PostType[] = typedData?.map(p => mapSupabaseRowToPostType(p, currentAuthUserId)) || [];
+  const posts: PostType[] = data?.map(p => mapSupabaseRowToPostType(p, currentAuthUserId)) || [];
   const totalCount = count ?? 0;
 
   return { posts, total: totalCount, error: null };
@@ -188,15 +174,16 @@ export const createPost = async (
 ): Promise<{ post: PostType | null; error: Error | null }> => {
 
   // 1. Insert Post
-  // TODO: Use generated types for insert data when available
+  // Use generated types for insert data
+  const insertData: Database['public']['Tables']['Post']['Insert'] = {
+    title: postData.title,
+    description: postData.description,
+    imageUrl: postData.imageUrl,
+    userId: userId,
+  };
   const { data: newPostResult, error: postInsertError } = await supabase
     .from('Post')
-    .insert({
-      title: postData.title,
-      description: postData.description,
-      imageUrl: postData.imageUrl,
-      userId: userId,
-    })
+    .insert(insertData) // Use the insertData object
     .select('id') // Select only the ID initially
     .single();
 
@@ -209,16 +196,17 @@ export const createPost = async (
 
   // 2. Insert Tags (if any) - NO TRANSACTION
   if (tagsData.length > 0) {
-    const tagsToInsert = tagsData.map(tag => ({
+    // Add type annotation for 'tag' parameter
+    const tagsToInsert = tagsData.map((tag: { productId: string; xPosition: number; yPosition: number }) => ({
       postId: postId,
       productId: tag.productId,
       xPosition: tag.xPosition,
       yPosition: tag.yPosition,
     }));
-    // TODO: Use generated types for insert data when available
+    // Use generated types for insert data
     const { error: tagsInsertError } = await supabase
       .from('Tag')
-      .insert(tagsToInsert);
+      .insert(tagsToInsert as Database['public']['Tables']['Tag']['Insert'][]); // Assert type
 
     if (tagsInsertError) {
       console.error('Error creating tags (repository):', tagsInsertError);
@@ -229,7 +217,7 @@ export const createPost = async (
   }
 
   // 3. Fetch the complete post data to return
-  // Define the select statement again (could be refactored)
+  // Define the select statement matching PostWithRelations structure again
   const selectStatement = `
     id,
     title,
@@ -238,15 +226,16 @@ export const createPost = async (
     created_at,
     updated_at,
     userId,
-    user:User ( id, username, name, image ),
+    user:User!inner ( id, username, name, image ),
     likes:Like ( userId ),
     saves:Save ( userId ),
     tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) )
-  `; // Added description to product select
+  `; // Ensure selected fields match PostWithRelations
 
+  // Use type parameter with the query
   const { data: completePostData, error: fetchCompleteError } = await supabase
     .from('Post')
-    .select(selectStatement)
+    .select<string, PostWithRelations>(selectStatement) // Specify return type
     .eq('id', postId)
     .single();
 
@@ -256,11 +245,12 @@ export const createPost = async (
     return { post: null, error: new Error(fetchCompleteError?.message || 'Failed to fetch created post') };
   }
 
-  // Use manual type assertion for now
-  const typedCompleteData = completePostData as PostWithRelationsManual;
+  // Data should be typed as PostWithRelations | null by Supabase client
+  // No need for manual type assertion 'as PostWithRelationsManual'
 
   // Map to PostType (creator cannot have liked/saved their own post yet)
-  const finalPost = mapSupabaseRowToPostType(typedCompleteData, null); // Pass null as authUserId
+  // Pass completePostData directly as it's already typed PostWithRelations | null
+  const finalPost = mapSupabaseRowToPostType(completePostData, null); // Pass null as authUserId
 
   return { post: finalPost, error: null };
 };

@@ -54,3 +54,17 @@ export interface PostsApiResponse {
     pages?: number;
   };
 }
+
+// Generic PaginatedResponse (assuming it's defined elsewhere or here)
+// If PaginatedResponse is not defined globally, define it here or import it
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasNextPage: boolean;
+  };
+}
+
+export type PaginatedComments = PaginatedResponse<Comment>;

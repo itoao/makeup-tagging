@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
 import { getUserId } from '@/lib/auth';
-import { UserProfile } from '@/src/types/product'; // Import UserProfile type
+import type { UserProfile } from '@/src/types/user'; // Import UserProfile type from user.ts
 
 // Define interfaces for Supabase query results
 interface SupabaseFollower {

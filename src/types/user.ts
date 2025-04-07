@@ -16,6 +16,16 @@ export interface UserProfile {
   // isCurrentUser?: boolean;
 }
 
-// Example for paginated user response if needed
-// import type { PaginatedResponse } from './api'; // Assuming api.ts exists for common types
-// export type PaginatedUsers = PaginatedResponse<UserProfile>;
+// Generic PaginatedResponse (assuming it's defined elsewhere or here)
+// If PaginatedResponse is not defined globally, define it here or import it
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasNextPage: boolean;
+  };
+}
+
+export type PaginatedUsers = PaginatedResponse<UserProfile>;
