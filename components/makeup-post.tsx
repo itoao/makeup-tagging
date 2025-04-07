@@ -1,11 +1,11 @@
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Heart, MessageCircle, Share2, Tag, Bookmark } from "lucide-react"; // Add Bookmark
+import { Heart, MessageCircle, Share2, Tag, Bookmark } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Post as PostType } from "@/src/types/product";
-import { useLikePost, useSavePost } from "@/hooks/use-interactions"; // Import hooks
+import { Post as PostType } from "@/src/types/post"; // Import PostType from post.ts
+import { useLikePost, useSavePost } from "@/hooks/use-interactions";
 
 interface MakeupPostProps {
   post: PostType;

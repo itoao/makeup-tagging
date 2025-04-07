@@ -12,25 +12,9 @@ export interface Brand {
 export interface Category {
   id: string;
   name: string;
-  // other category fields...
-}
-
-export interface Product {
-  id: string;
-  name: string;
-  description: string | null;
-  price: number | null;
-  image_url: string | null;
-  created_at: string;
-  updated_at: string;
-  // Foreign key IDs might still be useful depending on usage
-  brand_id: string; 
-  category_id: string;
-  // Nested relations as returned by Supabase select
-  brands: Brand | null; // Supabase returns relation name as key
-  categories: Category | null; // Supabase returns relation name as key
-}
 */
+
+// --- Product, Brand, Category Types ---
 
 export interface Brand {
   id: string;
@@ -56,79 +40,10 @@ export interface Product {
   updated_at?: string;
 }
 
-// --- User, Post, Comment, Tag Types (Aligned with User Data) ---
-
-export interface UserProfile {
-  id: string;
-  username: string;
-  name: string | null;
-  image: string | null; // Correct column name is 'image'
-  // bio: string | null; // Keep if needed
-  // isFollowing?: boolean; // Keep if needed - This will be added outside the profile type in the response
-  // isCurrentUser?: boolean; // Keep if needed - This will be added outside the profile type in the response
-  // Add count object
-   _count?: {
-     posts?: number; // posts count might need another query
-     followers?: number;
-     following?: number;
-   } | null;
-}
-
-export interface ProductTag {
-  id: string;
-  postId: string;
-  productId: string;
-  xPosition: number; // Changed from x_position to match log data
-  yPosition: number; // Changed from y_position to match log data
-  createdAt: string;
-  // Use singular relation name matching user data structure
-  product: Product | null;
-}
-
-export interface Comment {
-  id: string;
-  content: string;
-  userId: string; // Changed from user_id
-  postId: string; // Changed from post_id
-  createdAt: string; // Changed from created_at
-  // Use singular relation name matching user data structure
-  user: UserProfile | null;
-}
-
-// Like type might not be directly used in Post if only count is needed
-// export interface Like {
-//     id: string;
-//     userId: string; // Changed from user_id
-//     postId: string; // Changed from post_id
-//     createdAt: string; // Changed from created_at
-// }
-
-export interface Post {
-  id: string;
-  title: string; // Added title
-  description: string | null; // Added description
-  imageUrl: string; // Changed from image_url
-  userId: string; // Changed from user_id
-  createdAt: string; // Changed from created_at
-  updatedAt: string; // Changed from updated_at
-  // Relations matching user data structure
-  user: UserProfile | null; // Changed from users
-  comments?: Comment[]; // Make comments optional as we are not fetching them now
-  tags: ProductTag[]; // Kept as array
-  // Add _count based on user data structure
-  _count: {
-    likes: number;
-    comments: number;
-    saves: number; // Add saves count
-  } | null;
-  // Add properties populated by API based on current user (if applicable)
-  isLiked?: boolean;
-  isSaved?: boolean;
-}
 
 // --- Utility and Paginated Types ---
 
-// Generic type for paginated API responses (Keep as is if used)
+// Generic type for paginated API responses
 export interface PaginatedResponse<T> {
   data: T[];
   pagination: {
@@ -140,27 +55,14 @@ export interface PaginatedResponse<T> {
   };
 }
 
-// Specific paginated types
-// Define a specific type for the posts list API response
-export interface PostsApiResponse {
-  posts: Post[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    hasNextPage: boolean; // Calculate this on the server if possible
-    pages?: number; // Optional: Keep if calculated on server
-  };
-}
-// Keep others generic for now, assuming they might use the 'data' key
-export type PaginatedUsers = PaginatedResponse<UserProfile>;
-// export type PaginatedPosts = PaginatedResponse<Post>; // Remove this generic type
-export type PaginatedComments = PaginatedResponse<Comment>;
+
+// Specific paginated types for entities remaining in this file
 export type PaginatedProducts = PaginatedResponse<Product>;
-// Use renamed ProductTag type
-export type PaginatedTags = PaginatedResponse<ProductTag>;
 export type PaginatedBrands = PaginatedResponse<Brand>;
 export type PaginatedCategories = PaginatedResponse<Category>;
+
+// Note: PaginatedUsers, PaginatedPosts, PaginatedComments, PaginatedTags
+// should be defined in their respective type files (user.ts, post.ts) if needed.
 
 // Type for API request function options
 export interface ApiRequestOptions {
