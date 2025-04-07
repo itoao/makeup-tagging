@@ -28,16 +28,14 @@ export interface Product {
   id: string;
   name: string;
   description: string | null;
-  price?: number | null; // Make price optional
-  imageUrl: string | null; // Matches DB schema
-  brandId?: string; // Make optional
-  categoryId?: string; // Make optional
-  // Use singular relation names matching user data structure
+  price?: number | null;
+  imageUrl: string | null;
+  brandId?: string | null; // Allow null
+  categoryId?: string | null; // Allow null
   brand: Brand | null;
   category: Category | null;
-  // Add timestamps matching DB schema (snake_case) - Make optional
-  created_at?: string;
-  updated_at?: string;
+  created_at?: string | null; // Allow null
+  updated_at?: string | null; // Allow null
 }
 
 

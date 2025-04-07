@@ -15,15 +15,17 @@ type ProductRow = Database['public']['Tables']['Product']['Row'];
 type BrandRow = Database['public']['Tables']['Brand']['Row'];
 
 // Type for the complex select query result using generated types
+// Type for the complex select query result using generated types
 // Adjust based on the actual select statement structure and Supabase behavior
-type PostWithRelations = Omit<PostRow, 'userId'> & { // Omit original userId if user object is present
-  userId: string; // Ensure userId is always string (not null if user exists)
-  user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null; // Select specific user fields
-  likes: Pick<LikeRow, 'userId'>[];
-  saves: Pick<SaveRow, 'userId'>[];
+// NOTE: Supabase client with select<string, T> might not perfectly infer nested relations
+// when using raw select strings. We define the expected structure based on the query.
+type PostWithRelations = PostRow & {
+  user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null; // User might be null if join fails or user deleted
+  likes: Pick<LikeRow, 'userId'>[]; // Array of objects with userId
+  saves: Pick<SaveRow, 'userId'>[]; // Array of objects with userId
   tags: (Pick<TagRow, 'id' | 'postId' | 'productId' | 'created_at' | 'xPosition' | 'yPosition'> & {
-    product: (Pick<ProductRow, 'id' | 'name' | 'imageUrl' | 'description'> & { // Select specific product fields
-      brand: Pick<BrandRow, 'id' | 'name'> | null; // Select specific brand fields
+    product: (Pick<ProductRow, 'id' | 'name' | 'imageUrl' | 'description'> & {
+      brand: Pick<BrandRow, 'id' | 'name'> | null;
     }) | null;
   })[];
 };
@@ -33,16 +35,16 @@ type PostWithRelations = Omit<PostRow, 'userId'> & { // Omit original userId if 
 const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: string | null): PostType => {
   const likesCount = p.likes?.length ?? 0;
   const savesCount = p.saves?.length ?? 0;
-  // Explicitly type callback parameters
-  const isLiked = currentAuthUserId ? p.likes.some((like: Pick<LikeRow, 'userId'>) => like.userId === currentAuthUserId) : false;
-  const isSaved = currentAuthUserId ? p.saves.some((save: Pick<SaveRow, 'userId'>) => save.userId === currentAuthUserId) : false;
+  // Use generated types in callbacks
+  const isLiked = currentAuthUserId ? p.likes.some((like) => like.userId === currentAuthUserId) : false;
+  const isSaved = currentAuthUserId ? p.saves.some((save) => save.userId === currentAuthUserId) : false;
 
   // Map tags using generated types
-  const tags: ProductTag[] = p.tags?.map((t): ProductTag => ({ // t is inferred based on PostWithRelations['tags']
+  const tags: ProductTag[] = p.tags?.map((t): ProductTag => ({
       id: t.id,
-      postId: t.postId, // Assuming postId is selected or available on TagRow
-      productId: t.productId, // Assuming productId is selected or available on TagRow
-      createdAt: t.created_at, // Map from snake_case
+      postId: t.postId, // Assuming postId exists on the picked TagRow fields
+      productId: t.productId, // Assuming productId exists on the picked TagRow fields
+      createdAt: t.created_at, // Correctly map snake_case to camelCase
       xPosition: t.xPosition,
       yPosition: t.yPosition,
       // Map product and brand directly using selected fields
@@ -62,13 +64,13 @@ const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: strin
 
   // Construct PostType using fields from PostWithRelations 'p'
   return {
-    id: p.id, // From PostRow
-    title: p.title, // From PostRow
-    description: p.description, // From PostRow
-    imageUrl: p.imageUrl, // From PostRow
-    userId: p.userId, // Use the non-null userId from PostWithRelations
-    createdAt: p.created_at, // From PostRow
-    updatedAt: p.updated_at, // From PostRow
+    id: p.id,
+    title: p.title,
+    description: p.description,
+    imageUrl: p.imageUrl ?? null, // Revert to nullish coalescing
+    userId: p.userId, // userId from PostRow should be correct
+    createdAt: p.created_at,
+    updatedAt: p.updated_at ?? null, // Correct property name and use nullish coalescing
     _count: {
       likes: likesCount,
       comments: 0, // Assuming comment count is fetched elsewhere or not needed here
@@ -85,7 +87,7 @@ const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: strin
      comments: [], // Default empty array for now
     isLiked: isLiked,
     isSaved: isSaved,
-  };
+  } as PostType; // Explicitly cast the returned object to PostType
 };
 
 
@@ -119,16 +121,17 @@ export const findManyPosts = async (
     created_at,
     updated_at,
     userId,
-    user:User!inner ( id, username, name, image ),
+    user:User ( id, username, name, image ),
     likes:Like ( userId ),
     saves:Save ( userId ),
     tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) )
-  `; // Ensure selected fields match PostWithRelations
+  `; // Ensure selected fields match PostWithRelations type definition
 
   // Use type parameter with the query for better type safety from Supabase client
   let query = supabase
     .from('Post')
     // Specify the expected return type based on the select statement
+    // Using '<string, PostWithRelations>' helps Supabase client infer types
     .select<string, PostWithRelations>(selectStatement, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to);
@@ -174,8 +177,8 @@ export const createPost = async (
 ): Promise<{ post: PostType | null; error: Error | null }> => {
 
   // 1. Insert Post
-  // Use generated types for insert data
-  const insertData: Database['public']['Tables']['Post']['Insert'] = {
+  // Let TypeScript infer the type for insertData based on the object literal
+  const insertData = {
     title: postData.title,
     description: postData.description,
     imageUrl: postData.imageUrl,
@@ -226,7 +229,7 @@ export const createPost = async (
     created_at,
     updated_at,
     userId,
-    user:User!inner ( id, username, name, image ),
+    user:User ( id, username, name, image ),
     likes:Like ( userId ),
     saves:Save ( userId ),
     tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) )

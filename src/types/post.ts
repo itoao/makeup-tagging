@@ -6,11 +6,11 @@ import type { Product } from './product'; // Assuming Product stays in product.t
 
 export interface ProductTag {
   id: string;
-  postId: string;
-  productId: string;
+  postId: string | null; // Allow null
+  productId: string | null; // Allow null
   xPosition: number;
   yPosition: number;
-  createdAt: string;
+  createdAt: string | null; // Allow null
   product: Product | null;
 }
 
@@ -27,10 +27,10 @@ export interface Post {
   id: string;
   title: string;
   description: string | null;
-  imageUrl: string;
+  imageUrl: string | null; // Allow null based on schema/PostRow
   userId: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt: string | null; // Allow null based on schema/PostRow
   user: UserProfile | null;
   comments?: Comment[]; // Optional as not always fetched together
   tags: ProductTag[];
