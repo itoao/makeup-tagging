@@ -98,21 +98,29 @@ export const createComment = async (
   // 1. コメントを挿入する
   const { data: insertedData, error: insertError } = await supabase
     .from('Comment')
-    .insert(insertData)
-    .single();
+    .insert(insertData);
 
   if (insertError) {
     console.error('Error creating comment (repository):', insertError);
     return { comment: null, error: new Error(insertError.message) };
   }
 
-  // insertedDataがnullか、idプロパティがない場合はエラーを返す
+  // insertedDataがnullの場合はエラーを返す
   if (!insertedData) {
     console.error('Failed to create comment.');
     return { comment: null, error: new Error('Failed to create comment.') };
   }
-
-  const commentId = (insertedData as any).id;
+  
+  // 挿入されたデータから最初のコメントのIDを取得
+  // Supabase v2では、insertの結果は配列で返される
+  const insertedArray = insertedData as unknown as CommentRow[];
+  
+  if (insertedArray.length === 0) {
+    console.error('No comment data returned after insert.');
+    return { comment: null, error: new Error('Failed to create comment.') };
+  }
+  
+  const commentId = insertedArray[0].id;
   if (!commentId) {
     console.error('Failed to get created comment ID.');
     return { comment: null, error: new Error('Failed to get comment ID.') };

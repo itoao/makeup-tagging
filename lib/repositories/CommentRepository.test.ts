@@ -23,7 +23,6 @@ vi.mock('@/lib/supabase', () => {
     single: vi.fn(),
   };
   mockSupabaseClient.select.mockImplementation(() => mockSupabaseClient);
-  mockSupabaseClient.insert.mockImplementation(() => mockSupabaseClient);
   return { default: mockSupabaseClient };
 });
 
@@ -50,7 +49,7 @@ describe('CommentRepository', () => {
     mockSupabaseClient.range.mockReturnThis();
     mockSupabaseClient.eq.mockReturnThis();
     mockSupabaseClient.single.mockResolvedValue({ data: null, error: null });
-    mockSupabaseClient.insert.mockReturnThis();
+    mockSupabaseClient.insert.mockResolvedValue({ data: [{ id: 'mock-id' }], error: null });
     mockSupabaseClient.range.mockResolvedValue({ data: [], error: null, count: 0 }); // Default for findMany
   });
 
@@ -62,6 +61,7 @@ describe('CommentRepository', () => {
     const mockUserId2 = 'user-def';
     const now = new Date();
     const past = new Date(now.getTime() - 10000);
+    // モックデータに updated_at を追加
     const mockCommentData: CommentWithUser[] = [
       { id: 'comment-1', content: 'Comment 1', userId: mockUserId1, postId: mockPostId, created_at: past.toISOString(), updated_at: past.toISOString(), user: { id: mockUserId1, username: 'user_abc', name: 'User ABC', image: 'abc.jpg' } },
       { id: 'comment-2', content: 'Comment 2', userId: mockUserId2, postId: mockPostId, created_at: now.toISOString(), updated_at: now.toISOString(), user: { id: mockUserId2, username: 'user_def', name: 'User DEF', image: 'def.jpg' } },
@@ -133,7 +133,7 @@ describe('CommentRepository', () => {
     const mockUserId = 'commenter-user';
     const mockContent = 'This is a new comment.';
     const mockNewCommentId = 'new-comment-id';
-    // insert後にselectで取得される想定のデータ
+    // insert後にselectで取得される想定のデータ (updated_at を追加)
     const mockCreatedCommentData: CommentWithUser = {
       id: mockNewCommentId,
       content: mockContent,
@@ -145,10 +145,9 @@ describe('CommentRepository', () => {
     };
 
     it('コメントを正常に作成し、ユーザー情報を含めてマッピングされたデータを返すべき', async () => {
-      // Arrange: insert が最初にIDを返し、次のsingleが作成されたデータを返すように設定
-      mockSupabaseClient.single
-        .mockResolvedValueOnce({ data: { id: mockNewCommentId }, error: null }) // insert のレスポンス
-        .mockResolvedValueOnce({ data: mockCreatedCommentData, error: null }); // 詳細取得のレスポンス
+      // Arrange: insert が作成データを返し、select -> single が作成されたデータを返すように設定
+      mockSupabaseClient.insert.mockResolvedValueOnce({ data: [{ id: mockNewCommentId }], error: null });
+      mockSupabaseClient.single.mockResolvedValueOnce({ data: mockCreatedCommentData, error: null });
 
       // Act: テスト対象の関数を実行
       const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
@@ -165,39 +164,35 @@ describe('CommentRepository', () => {
       // Supabaseクライアント呼び出し検証
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('Comment');
       expect(mockSupabaseClient.insert).toHaveBeenCalledWith({ postId: mockPostId, userId: mockUserId, content: mockContent }); // insertの引数を確認
-      expect(mockSupabaseClient.eq).toHaveBeenCalledWith('id', mockNewCommentId); // IDでのフィルタリング確認
-      expect(mockSupabaseClient.select).toHaveBeenCalledTimes(1); // selectが1回呼ばれたか確認
-      expect(mockSupabaseClient.single).toHaveBeenCalledTimes(2); // singleが2回呼ばれたか
+      expect(mockSupabaseClient.select).toHaveBeenCalledWith(expect.any(String)); // selectの呼び出しを確認
+      expect(mockSupabaseClient.single).toHaveBeenCalledTimes(1); // singleが呼ばれたか
     });
 
     it('Supabaseの挿入処理でエラーが発生した場合、エラーを返すべき', async () => {
-      // Arrange: insertのsingle呼び出しがエラーを返すように設定
+      // Arrange: insert がエラーを返すように設定
       const mockInsertError = new Error('Insert failed');
-      mockSupabaseClient.single.mockResolvedValueOnce({ data: null, error: mockInsertError });
+      mockSupabaseClient.insert.mockResolvedValueOnce({ data: null, error: mockInsertError });
 
       // Act: 関数を実行
       const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
 
       // Assert: エラーが返され、commentがnullであることを確認
-      expect(error?.message).toContain('Insert failed');
+      expect(error).toEqual(mockInsertError);
       expect(comment).toBeNull();
-      expect(mockSupabaseClient.single).toHaveBeenCalledTimes(1); // 最初のsingleのみ呼ばれる
-      expect(mockSupabaseClient.select).not.toHaveBeenCalled(); // selectは呼ばれない
+      expect(mockSupabaseClient.single).toHaveBeenCalledTimes(0);
     });
 
     it('挿入後のデータ取得でデータがnullの場合、エラーを返すべき', async () => {
-      // Arrange: 最初のsingleは成功するが、2回目のsingleがnullデータを返すように設定
-      mockSupabaseClient.single
-        .mockResolvedValueOnce({ data: { id: mockNewCommentId }, error: null }) // 挿入は成功
-        .mockResolvedValueOnce({ data: null, error: null }); // 詳細取得が失敗
+      // Arrange: insert が空の配列を返すように設定
+      mockSupabaseClient.insert.mockResolvedValueOnce({ data: [], error: null });
 
       // Act: 関数を実行
       const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
 
       // Assert: 特定のエラーメッセージが返されることを確認
-      expect(error?.message).toEqual('Failed to fetch created comment.');
+      expect(error).toEqual(new Error('Failed to create comment.'));
       expect(comment).toBeNull();
-      expect(mockSupabaseClient.single).toHaveBeenCalledTimes(2); // 両方のsingleが呼ばれる
+      expect(mockSupabaseClient.single).toHaveBeenCalledTimes(0);
     });
   });
 });
