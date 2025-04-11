@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
 // Import repository function
-import { findCommentsByPostId } from '@/lib/repositories/CommentRepository';
+import { findCommentsByPostId, createComment } from '@/lib/repositories/CommentRepository';
 // Import Comment type if needed for response structure
 import type { Comment } from '@/src/types/post';
 
@@ -65,11 +65,6 @@ export async function GET(
     );
   }
 }
-
-// Import createComment from repository
-import { findCommentsByPostId, createComment } from '@/lib/repositories/CommentRepository';
-
-// ... (Keep GET handler as modified above) ...
 
 // 投稿にコメントを追加
 export async function POST(

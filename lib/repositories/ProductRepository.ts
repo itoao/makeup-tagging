@@ -102,7 +102,7 @@ export const fetchProducts = async (
  * Creates a new product.
  * @param productData - Data for the new product (excluding image URL).
  * @param imageUrl - Optional URL of the uploaded image.
- * @returns The newly created product data with relations, or null if failed.
+ * @returns The newly created product data (raw Supabase structure) or null if failed.
  */
 export const createProduct = async (
   productData: {
@@ -113,7 +113,8 @@ export const createProduct = async (
     categoryId: string;
   },
   imageUrl: string | null
-): Promise<{ product: Product | null; error: Error | null }> => {
+// Return type changed to reflect raw data return
+): Promise<{ product: any | null; error: Error | null }> => {
 
   // TODO: Consider moving brand/category existence checks here from the API route
   // for better encapsulation, though it might involve extra DB calls.
@@ -178,33 +179,9 @@ export const createProduct = async (
       return { product: null, error: new Error('Failed to fetch created product.') };
    }
 
-  // Step 3: Map the fetched data.
-  // !!! TEMPORARILY COMMENTING OUT MAPPING DUE TO PERSISTENT TYPE ERRORS !!!
-  // TODO: Debug the actual structure of fetchedProduct and fix mapping.
-  /*
-  const productDataFromDb = fetchedProduct as any; // Keep 'as any' for now if needed during debug
-  const mappedProduct: Product = {
-     id: productDataFromDb.id, // Error occurs here
-     name: productDataFromDb.name,
-     description: productDataFromDb.description,
-     price: productDataFromDb.price,
-     imageUrl: productDataFromDb.imageUrl,
-     brandId: productDataFromDb.brandId,
-     categoryId: productDataFromDb.categoryId,
-     brand: productDataFromDb.brand && typeof productDataFromDb.brand === 'object' && !Array.isArray(productDataFromDb.brand)
-       ? { id: productDataFromDb.brand.id, name: productDataFromDb.brand.name }
-       : null,
-     category: productDataFromDb.category && typeof productDataFromDb.category === 'object' && !Array.isArray(productDataFromDb.category)
-       ? { id: productDataFromDb.category.id, name: productDataFromDb.category.name }
-       : null,
-     created_at: productDataFromDb.created_at,
-     updated_at: productDataFromDb.updated_at,
-  };
-  */
-  // Return the raw fetched data for now (or null) to avoid type errors temporarily
-  // This means the API route will receive the Supabase structure directly
-  console.warn('[ProductRepository] createProduct mapping is temporarily disabled due to type errors. Returning raw data.');
-  return { product: fetchedProduct as any, error: null }; // Cast to any to bypass type check temporarily
+  // Step 3: Return the fetched data directly due to persistent mapping issues.
+  // The commented-out mapping block has been completely removed.
+  return { product: fetchedProduct as any, error: null };
 };
 
 
