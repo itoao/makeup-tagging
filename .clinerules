@@ -69,8 +69,28 @@ This guide outlines the best practices, conventions, and standards for developme
 ### Unit Tests
 - Place unit tests in the same directory as the file under test (e.g., foo.test.ts for foo.ts)
 - Write thorough unit tests to verify individual functions and components
-- Follow patterns like Arrange-Act-Assert to ensure clarity and consistency in tests
+- Follow the Arrange-Act-Assert pattern:
+  - Arrange: Set up test data and conditions
+  - Act: Execute the code being tested
+  - Assert: Verify the results
+- Add clear comments to explain:
+  - Test case purpose and intent
+  - Input data reasoning
+  - Expected results and why
+  - Verification logic
+- Write descriptive assertions that clearly state what is being verified
 - Mock external dependencies and API calls to isolate unit tests
+- Clean up unused test code, but keep reference code with clear comments
+- Ensure tests are:
+  - Readable
+  - Well-documented
+  - Maintainable
+  - Purpose-driven
+- When mocking chain methods (e.g., Supabase client), ensure the mock structure matches the actual API's method chain pattern
+- For each test case, implement specific mocks that accurately simulate the expected behavior
+- Set up proper error cases by mocking each step in the process chain
+- Use `mockImplementation()` rather than `mockReturnThis()` when complex chaining behavior is needed
+- Reset mocks for each test to prevent interference between test cases
 
 ## Documentation
 - Write TSDoc appropriately in Japanese
