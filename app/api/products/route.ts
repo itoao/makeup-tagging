@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
 import { uploadImage } from '@/lib/supabase-storage';
-// Import repository
-import { fetchProducts } from '@/lib/repositories/ProductRepository';
+// Import repository functions
+import { fetchProducts, createProduct } from '@/lib/repositories/ProductRepository'; // Add createProduct
 // Import application types if needed for response structure
 import type { PaginatedProducts } from '@/src/types/product';
 
@@ -66,8 +66,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     // 認証チェック
-    await requireAuth();
-    
+    const userId = await requireAuth(); // Get user ID for potential future use (e.g., logging)
+
     // リクエストボディを取得
     const formData = await req.formData();
     const name = formData.get('name') as string;
@@ -76,8 +76,8 @@ export async function POST(req: NextRequest) {
     const brandId = formData.get('brandId') as string;
     const categoryId = formData.get('categoryId') as string;
     const image = formData.get('image') as File | null;
-    
-    // バリデーション
+
+    // --- Basic Input Validation ---
     if (!name || !brandId || !categoryId) {
       return NextResponse.json(
         { error: '製品名、ブランド、カテゴリーは必須です' },
@@ -85,84 +85,74 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ブランドが存在するか確認
-    const { data: brandData, error: brandError } = await supabase
-      .from('Brand') // Use PascalCase
-      .select('id')
-      .eq('id', brandId)
-      .maybeSingle(); // Returns null if not found, doesn't throw error
-
-    if (brandError) {
-      console.error('Error checking brand:', brandError);
-      return NextResponse.json({ error: 'ブランド確認中にエラーが発生しました' }, { status: 500 });
-    }
-    if (!brandData) {
-      return NextResponse.json(
-        { error: '指定されたブランドが見つかりません' },
-        { status: 404 }
-      );
-    }
-
-    // カテゴリーが存在するか確認
-    const { data: categoryData, error: categoryError } = await supabase
-      .from('Category') // Use PascalCase
-      .select('id')
-      .eq('id', categoryId)
-      .maybeSingle();
-
-    if (categoryError) {
-      console.error('Error checking category:', categoryError);
-      return NextResponse.json({ error: 'カテゴリー確認中にエラーが発生しました' }, { status: 500 });
-    }
-    if (!categoryData) {
-      return NextResponse.json(
-        { error: '指定されたカテゴリーが見つかりません' },
-        { status: 404 }
-      );
-    }
-
-    // 画像をアップロード（存在する場合）
-    let imageUrl: string | null = null; // Explicitly type imageUrl
+    // --- Image Upload (if provided) ---
+    let imageUrl: string | null = null;
     if (image) {
       const uploadResult = await uploadImage(image, 'products');
-      
       if ('error' in uploadResult) {
-        return NextResponse.json(
-          { error: uploadResult.error },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: uploadResult.error }, { status: 500 });
       }
-      
       imageUrl = uploadResult.url;
     }
 
-    // 製品を作成
-    const { data: newProduct, error: insertError } = await supabase
-      .from('Product') // Use PascalCase
-      .insert({
+    // --- Call Repository to Create Product ---
+    // Note: Brand/Category existence checks are currently not in the repository
+    // They remain here for now, but could be moved.
+     // ブランドが存在するか確認 (Keep check here for now)
+     const { data: brandData, error: brandError } = await supabase
+       .from('Brand')
+       .select('id')
+       .eq('id', brandId)
+       .maybeSingle();
+
+     if (brandError) {
+       console.error('Error checking brand:', brandError);
+       return NextResponse.json({ error: 'ブランド確認中にエラーが発生しました' }, { status: 500 });
+     }
+     if (!brandData) {
+       return NextResponse.json({ error: '指定されたブランドが見つかりません' }, { status: 404 });
+     }
+
+     // カテゴリーが存在するか確認 (Keep check here for now)
+     const { data: categoryData, error: categoryError } = await supabase
+       .from('Category')
+       .select('id')
+       .eq('id', categoryId)
+       .maybeSingle();
+
+     if (categoryError) {
+       console.error('Error checking category:', categoryError);
+       return NextResponse.json({ error: 'カテゴリー確認中にエラーが発生しました' }, { status: 500 });
+     }
+     if (!categoryData) {
+       return NextResponse.json({ error: '指定されたカテゴリーが見つかりません' }, { status: 404 });
+     }
+
+
+    console.log(`[API /products] Calling repository to create product`);
+    const { product: newProduct, error: createError } = await createProduct(
+      {
         name,
         description,
         price,
-        imageUrl: imageUrl, // Use camelCase (as defined in migration)
-        brandId: brandId,   // Use camelCase (as defined in migration)
-        categoryId: categoryId, // Use camelCase (as defined in migration)
-      })
-      .select(`
-        *,
-        Brand (*),
-        Category (*)
-      `) // Fetch the created product with relations
-      .single(); // Expect a single row back
+        brandId,
+        categoryId,
+      },
+      imageUrl // Pass the potentially null image URL
+    );
 
-    if (insertError) {
-      // Handle potential column name mismatch errors if needed
-      console.error('Error creating product:', insertError);
+    if (createError || !newProduct) {
+      console.error('[API /products] Error from createProduct repository:', createError?.message);
       return NextResponse.json(
-        { error: '製品の作成に失敗しました' },
+        { error: '製品の作成に失敗しました (repository error)', details: createError?.message },
         { status: 500 }
       );
     }
 
+    console.log(`[API /products] Successfully created product ID: ${newProduct.id} via repository.`);
+
+    // Return the product data received from the repository
+    // Note: Currently returns raw Supabase data due to temporary mapping disablement
     return NextResponse.json(newProduct);
   } catch (error) {
     // Keep existing error handling structure
