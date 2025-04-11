@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { productApi } from "@/lib/api"
-import { Product } from "@/src/types/product" // Import Product type
+import type { Product } from "@/src/types/product" // Import Product type
 import Image from "next/image"
 import Link from "next/link"
 
@@ -18,8 +18,8 @@ const fallbackProducts: Product[] = [
     description: null,
     price: 3850,
     imageUrl: "/マキアージュuv.jpg?height=200&width=200", // Corrected property name
-    brand_id: "dummy-brand-1", // Added dummy FK
-    category_id: "dummy-category-1", // Added dummy FK
+    brandId: "dummy-brand-1", // Added dummy FK
+    categoryId: "dummy-category-1", // Added dummy FK
     brand: { id: "dummy-brand-1", name: "資生堂" }, // Added dummy id
     category: { id: "dummy-category-1", name: "ベースメイク" }, // Added dummy id
     // Removed _count
@@ -30,8 +30,8 @@ const fallbackProducts: Product[] = [
     description: null,
     price: 1650,
     imageUrl: "/リップモンスター.jpg?height=200&width=200", // Corrected property name
-    brand_id: "dummy-brand-2",
-    category_id: "dummy-category-2",
+    brandId: "dummy-brand-2",
+    categoryId: "dummy-category-2",
     brand: { id: "dummy-brand-2", name: "KATE" }, // Added dummy id
     category: { id: "dummy-category-2", name: "リップ" }, // Added dummy id
     // Removed _count
@@ -42,8 +42,8 @@ const fallbackProducts: Product[] = [
     description: null,
     price: 6600,
     imageUrl: "/designing-color-eyes.jpg?height=200&width=200", // Corrected property name
-    brand_id: "dummy-brand-3",
-    category_id: "dummy-category-3",
+    brandId: "dummy-brand-3",
+    categoryId: "dummy-category-3",
     brand: { id: "dummy-brand-3", name: "SUQQU" }, // Added dummy id
     category: { id: "dummy-category-3", name: "アイシャドウ" }, // Added dummy id
     // Removed _count
@@ -54,8 +54,8 @@ const fallbackProducts: Product[] = [
     description: null,
     price: 1320,
     imageUrl: "/ラッシュエキスパート.jpg?height=200&width=200", // Corrected property name
-    brand_id: "dummy-brand-4",
-    category_id: "dummy-category-4",
+    brandId: "dummy-brand-4",
+    categoryId: "dummy-category-4",
     brand: { id: "dummy-brand-4", name: "ヒロインメイク" }, // Added dummy id
     category: { id: "dummy-category-4", name: "マスカラ" }, // Added dummy id
     // Removed _count

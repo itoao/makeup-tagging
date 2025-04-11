@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Heart, MessageCircle, Share2, Tag, Bookmark } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Post as PostType } from "@/src/types/post"; // Import PostType from post.ts
+import type { Post as PostType } from "@/src/types/post"; // Import PostType from post.ts
 import { useLikePost, useSavePost } from "@/hooks/use-interactions";
 
 interface MakeupPostProps {

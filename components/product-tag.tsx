@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, Loader2 } from "lucide-react"
 import { productApi } from "@/lib/api"
-import { Product } from "@/src/types/product" // Import Product type
+import type { Product } from "@/src/types/product" // Import Product type
 import Image from "next/image"
 
 interface ProductTagProps {
