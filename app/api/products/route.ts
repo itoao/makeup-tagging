@@ -19,11 +19,16 @@ export async function GET(req: NextRequest) {
     const limit = Number(searchParams.get('limit') || '20');
     const page = Number(searchParams.get('page') || '1');
 
-    console.log(`[API /products] Calling repository to fetch products`);
+    console.log(`[API /products] Calling repository to fetch products with options:`, { page, limit, name, brandId, categoryId });
 
-    // Call the repository function (currently fetches all products)
-    // TODO: Enhance repository function to accept filtering/pagination params
-    const { products, error } = await fetchProducts();
+    // Call the repository function with options
+    const { products, total, error } = await fetchProducts({
+      page,
+      limit,
+      name,
+      brandId,
+      categoryId,
+    });
 
     if (error) {
       console.error('[API /products] Error from repository:', error.message);
@@ -35,16 +40,14 @@ export async function GET(req: NextRequest) {
 
     console.log(`[API /products] Received ${products.length} products from repository.`);
 
-    // TODO: Implement pagination and filtering based on repository results
-    // For now, returning all products without pagination info matching the old structure closely
-    // This needs refinement once repository handles pagination/filtering.
+    // Use the total count returned by the repository for pagination
     return NextResponse.json({
       products: products,
-      pagination: { // Placeholder pagination
-        total: products.length, // Incorrect total, needs fix in repo
-        page: 1,
-        limit: products.length,
-        pages: 1,
+      pagination: {
+        total: total, // Use total from repository
+        page,
+        limit,
+        pages: Math.ceil(total / limit), // Calculate pages correctly
       },
     });
 
@@ -127,7 +130,7 @@ export async function POST(req: NextRequest) {
      if (!categoryData) {
        return NextResponse.json({ error: '指定されたカテゴリーが見つかりません' }, { status: 404 });
      }
-
+     // End of existence checks (kept in API route for now)
 
     console.log(`[API /products] Calling repository to create product`);
     const { product: newProduct, error: createError } = await createProduct(

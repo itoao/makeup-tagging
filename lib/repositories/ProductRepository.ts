@@ -179,9 +179,25 @@ export const createProduct = async (
       return { product: null, error: new Error('Failed to fetch created product.') };
    }
 
-  // Step 3: Return the fetched data directly due to persistent mapping issues.
-  // The commented-out mapping block has been completely removed.
-  return { product: fetchedProduct as any, error: null };
+  // Step 3: Mapping is commented out again due to persistent type errors.
+  /*
+  const mappedProduct: Product = {
+     id: fetchedProduct.id, // Error persists here
+     name: fetchedProduct.name,
+     description: fetchedProduct.description,
+     price: fetchedProduct.price,
+     imageUrl: fetchedProduct.imageUrl,
+     brandId: fetchedProduct.brandId,
+     categoryId: fetchedProduct.categoryId,
+     brand: fetchedProduct.brand ? { id: fetchedProduct.brand.id, name: fetchedProduct.brand.name } : null,
+     category: fetchedProduct.category ? { id: fetchedProduct.category.id, name: fetchedProduct.category.name } : null,
+     created_at: fetchedProduct.created_at,
+     updated_at: fetchedProduct.updated_at,
+  };
+  */
+
+  console.warn('[ProductRepository] createProduct returning raw data due to persistent mapping type errors.');
+  return { product: fetchedProduct as any, error: null }; // Return raw data (casted to any)
 };
 
 
