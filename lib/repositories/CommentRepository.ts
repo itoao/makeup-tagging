@@ -95,7 +95,30 @@ export const createComment = async (
     content,
   };
 
-  // Insert the comment and immediately fetch it back with user data
+  // 1. コメントを挿入する
+  const { data: insertedData, error: insertError } = await supabase
+    .from('Comment')
+    .insert(insertData)
+    .single();
+
+  if (insertError) {
+    console.error('Error creating comment (repository):', insertError);
+    return { comment: null, error: new Error(insertError.message) };
+  }
+
+  // insertedDataがnullか、idプロパティがない場合はエラーを返す
+  if (!insertedData) {
+    console.error('Failed to create comment.');
+    return { comment: null, error: new Error('Failed to create comment.') };
+  }
+
+  const commentId = (insertedData as any).id;
+  if (!commentId) {
+    console.error('Failed to get created comment ID.');
+    return { comment: null, error: new Error('Failed to get comment ID.') };
+  }
+
+  // 2. 挿入が成功したら、IDを使用して詳細データをフェッチする
   const selectStatement = `
     id,
     content,
@@ -105,21 +128,21 @@ export const createComment = async (
     user:User ( id, username, name, image )
   `;
 
-  const { data: newComment, error: insertError } = await supabase
+  const { data: newComment, error: selectError } = await supabase
     .from('Comment')
-    .insert(insertData)
-    .select<string, CommentWithUser>(selectStatement) // Fetch the inserted row with user
+    .select<string, CommentWithUser>(selectStatement)
+    .eq('id', commentId)
     .single();
 
-  if (insertError) {
-    console.error('Error creating comment (repository):', insertError);
-    return { comment: null, error: new Error(insertError.message) };
+  if (selectError) {
+    console.error('Error fetching created comment:', selectError);
+    return { comment: null, error: new Error(selectError.message) };
   }
 
-   if (!newComment) {
-     console.error('Failed to fetch created comment after insert.');
-     return { comment: null, error: new Error('Failed to fetch created comment.') };
-   }
+  if (!newComment) {
+    console.error('Failed to fetch created comment details.');
+    return { comment: null, error: new Error('Failed to fetch created comment.') };
+  }
 
   // Map the fetched data
   const mappedComment = mapSupabaseRowToCommentType(newComment);
