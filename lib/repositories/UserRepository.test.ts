@@ -17,10 +17,8 @@ vi.mock('@/lib/supabase', () => {
 });
 
 // Import the mocked supabase client *after* vi.mock
-// We need a way to access the mock object for setup in beforeEach/tests
-// One way is to re-import the mocked module
 import supabase from '@/lib/supabase';
-// Cast to access the mock functions directly if needed for setup/assertions
+// Cast to access the mock functions directly
 const mockSupabaseClient = supabase as unknown as {
   from: ReturnType<typeof vi.fn>;
   select: ReturnType<typeof vi.fn>;
@@ -31,48 +29,62 @@ const mockSupabaseClient = supabase as unknown as {
   maybeSingle: ReturnType<typeof vi.fn>;
 };
 
+// テスト用ヘルパー関数
+const createMockUserData = (userId: string, username: string) => ({
+  id: userId,
+  username,
+  name: 'Test User',
+  image: 'test.jpg',
+  created_at: new Date().toISOString(),
+  followers: [{ followerId: 'follower-1' }],
+  following: [{ followingId: 'following-1' }, { followingId: 'following-2' }],
+});
+
+const createExpectedProfile = (userData: ReturnType<typeof createMockUserData>): UserProfile => ({
+  id: userData.id,
+  username: userData.username,
+  name: userData.name,
+  image: userData.image,
+  _count: {
+    followers: userData.followers.length,
+    following: userData.following.length,
+  }
+});
+
+const setupDeleteMock = (returnError: Error | null = null) => {
+  mockSupabaseClient.delete.mockImplementation(() => ({
+    eq: mockSupabaseClient.eq
+  }));
+  
+  mockSupabaseClient.eq.mockImplementation((field, value) => {
+    if (field === 'followingId') {
+      return { error: returnError };
+    }
+    return { eq: mockSupabaseClient.eq };
+  });
+};
 
 describe('UserRepository', () => {
   beforeEach(() => {
-    // Reset mocks before each test
     vi.clearAllMocks();
-    // Reset mock implementations using the re-imported mock object
-    mockSupabaseClient.from.mockReturnThis(); // Ensure chaining is reset
+    // Reset mock implementations
+    mockSupabaseClient.from.mockReturnThis();
     mockSupabaseClient.select.mockReturnThis();
     mockSupabaseClient.insert.mockReturnThis();
-    mockSupabaseClient.delete.mockReturnThis(); // Ensure delete returns this for chaining .eq
+    mockSupabaseClient.delete.mockReturnThis();
     mockSupabaseClient.eq.mockReturnThis();
     mockSupabaseClient.in.mockReturnThis();
-    mockSupabaseClient.maybeSingle.mockResolvedValue({ data: null, error: null }); // Default reset
-    mockSupabaseClient.insert.mockResolvedValue({ error: null }); // Default reset
-    mockSupabaseClient.delete.mockResolvedValue({ error: null }); // Default reset
-    mockSupabaseClient.in.mockResolvedValue({ data: [], error: null }); // Default reset for 'in' check
+    mockSupabaseClient.maybeSingle.mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient.insert.mockResolvedValue({ error: null });
+    mockSupabaseClient.delete.mockResolvedValue({ error: null });
+    mockSupabaseClient.in.mockResolvedValue({ data: [], error: null });
   });
 
-  // --- findUserByIdentifier ---
-  // Removed duplicate describe block
   describe('findUserByIdentifier', () => {
     const mockUserId = 'user-id-123';
     const mockUsername = 'testuser';
-    const mockUserData = {
-      id: mockUserId,
-      username: mockUsername,
-      name: 'Test User',
-      image: 'test.jpg',
-      created_at: new Date().toISOString(),
-      followers: [{ followerId: 'follower-1' }],
-      following: [{ followingId: 'following-1' }, { followingId: 'following-2' }],
-    };
-    const expectedProfile: UserProfile = {
-      id: mockUserId,
-      username: mockUsername,
-      name: 'Test User',
-      image: 'test.jpg',
-      _count: {
-        followers: 1,
-        following: 2,
-      }
-    };
+    const mockUserData = createMockUserData(mockUserId, mockUsername);
+    const expectedProfile = createExpectedProfile(mockUserData);
 
     it('should find a user by ID and return profile with follow status', async () => {
       mockSupabaseClient.maybeSingle.mockResolvedValueOnce({ data: mockUserData, error: null });
@@ -140,15 +152,14 @@ describe('UserRepository', () => {
     });
   });
 
-  // --- followUser ---
   describe('followUser', () => {
     const followerId = 'user-follower';
     const followingId = 'user-following';
     const mockExistingUsers = [{ id: followerId }, { id: followingId }];
 
     it('should insert a follow relationship if users exist and not self-following', async () => {
-       mockSupabaseClient.in.mockResolvedValueOnce({ data: mockExistingUsers, error: null }); // Both users exist
-       mockSupabaseClient.insert.mockResolvedValueOnce({ error: null }); // Insert succeeds
+       mockSupabaseClient.in.mockResolvedValueOnce({ data: mockExistingUsers, error: null });
+       mockSupabaseClient.insert.mockResolvedValueOnce({ error: null });
 
        const { error } = await followUser(followerId, followingId);
 
@@ -167,7 +178,7 @@ describe('UserRepository', () => {
     });
 
     it('should return an error if follower does not exist', async () => {
-       mockSupabaseClient.in.mockResolvedValueOnce({ data: [{ id: followingId }], error: null }); // Only following exists
+       mockSupabaseClient.in.mockResolvedValueOnce({ data: [{ id: followingId }], error: null });
 
        const { error } = await followUser(followerId, followingId);
 
@@ -177,7 +188,7 @@ describe('UserRepository', () => {
     });
 
      it('should return an error if following user does not exist', async () => {
-       mockSupabaseClient.in.mockResolvedValueOnce({ data: [{ id: followerId }], error: null }); // Only follower exists
+       mockSupabaseClient.in.mockResolvedValueOnce({ data: [{ id: followerId }], error: null });
 
        const { error } = await followUser(followerId, followingId);
 
@@ -219,24 +230,12 @@ describe('UserRepository', () => {
     });
   });
 
-  // --- unfollowUser ---
   describe('unfollowUser', () => {
      const followerId = 'user-follower';
      const followingId = 'user-following';
 
     it('should delete the follow relationship', async () => {
-      // delete()が正しくチェーン可能なことを確認
-      mockSupabaseClient.delete.mockImplementation(() => {
-        return {
-          eq: mockSupabaseClient.eq
-        };
-      });
-      mockSupabaseClient.eq.mockImplementation((field, value) => {
-        if (field === 'followingId') {
-          return { error: null };
-        }
-        return { eq: mockSupabaseClient.eq };
-      });
+      setupDeleteMock();
 
       const { error } = await unfollowUser(followerId, followingId);
 
@@ -249,18 +248,7 @@ describe('UserRepository', () => {
 
     it('should return an error if Supabase delete fails', async () => {
       const mockDeleteError = new Error('Delete failed');
-      // delete()が正しくチェーン可能なことを確認
-      mockSupabaseClient.delete.mockImplementation(() => {
-        return {
-          eq: mockSupabaseClient.eq
-        };
-      });
-      mockSupabaseClient.eq.mockImplementation((field, value) => {
-        if (field === 'followingId') {
-          return { error: mockDeleteError };
-        }
-        return { eq: mockSupabaseClient.eq };
-      });
+      setupDeleteMock(mockDeleteError);
 
       const { error } = await unfollowUser(followerId, followingId);
 
