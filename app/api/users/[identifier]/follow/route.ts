@@ -1,110 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import supabase from '@/lib/supabase'; // Import Supabase client
 import { requireAuth } from '@/lib/auth';
-// TODO: Import generated Supabase types if available
-
-// Helper function to get target user ID from identifier (always treat as userId)
-const getTargetUserId = async (userId: string): Promise<string | null> => {
-  // Always query by 'id' column
-  const { data, error } = await supabase
-    .from('User') // Use PascalCase table name
-    .select('id')
-    .eq('id', userId) // Always use 'id'
-    .single();
-
-  if (error || !data) {
-    // Log error but return null to let the caller handle 404 etc.
-    if (error && error.code !== 'PGRST116') { // Don't log "not found" as an error here
-      console.error(`Error fetching target user by id:`, error);
-    }
-    return null; // Return null if not found or error
-  }
-  return data.id;
-};
-
+// Import repository functions
+import { findUserByIdentifier, followUser, unfollowUser } from '@/lib/repositories/UserRepository';
 
 // ユーザーをフォローする
 export async function POST(
   req: NextRequest,
-  // Update params type to use identifier
-  { params }: { params: { identifier: string } } 
+  { params }: { params: { identifier: string } }
 ) {
   try {
-    // Get identifier from params
-    const identifier = params.identifier; 
-    const currentUserId = await requireAuth();
+    const followerId = await requireAuth(); // 認証されたユーザーIDを取得
+    const followingIdentifier = params.identifier; // フォロー対象のIDまたはユーザー名
 
-    // フォロー対象のユーザーIDを取得
-    const targetUserId = await getTargetUserId(identifier);
+    // フォロー対象のユーザーが存在するか確認し、IDを取得
+    // Pass null as currentUserId, as we only need the profile here, not the follow status relative to the current user
+    const { profile: userToFollow, error: findError } = await findUserByIdentifier(followingIdentifier, null);
 
-    if (!targetUserId) {
+    if (findError) {
+      console.error(`[API Follow] Error finding user to follow (${followingIdentifier}):`, findError.message);
+      return NextResponse.json({ error: 'ユーザー検索中にエラーが発生しました', details: findError.message }, { status: 500 });
+    }
+
+    if (!userToFollow) {
       return NextResponse.json(
-        { error: 'フォロー対象見つかりません' },
+        { error: 'フォロー対象のユーザーが見つかりません' },
         { status: 404 }
       );
     }
 
-    // 自分自身をフォローしようとしている場合
-    if (targetUserId === currentUserId) {
+    const followingId = userToFollow.id; // 確実にIDを使用
+
+    // リポジトリ関数を呼び出してフォローを実行
+    const { error: followError } = await followUser(followerId, followingId);
+
+    if (followError) {
+      // リポジトリで既にハンドリングされている可能性のあるエラー（例：自己フォロー）
+      if (followError.message === "自分自身をフォローすることはできません。") {
+        return NextResponse.json({ error: followError.message }, { status: 400 });
+      }
+      // リポジトリで既にハンドリングされている可能性のあるエラー（例：既にフォロー済み）
+      // Note: Repository currently returns null for already following, so this check might not be needed if repo handles it silently.
+      // if (followError.message === '既にフォローしています') {
+      //   return NextResponse.json({ message: '既にフォローしています' });
+      // }
+      console.error(`[API Follow] Error from repository following user:`, followError.message);
       return NextResponse.json(
-        { error: '自分自身をフォローすることはできません' },
-        { status: 400 }
+        { error: 'フォロー処理中にエラーが発生しました', details: followError.message },
+        { status: 500 }
       );
     }
-
-    // 既にフォローしているか確認
-    const { data: followData, error: followCheckError } = await supabase
-      .from('Follow') // Revert to PascalCase
-      .select('id')
-      .eq('followerId', currentUserId) // Revert to camelCase
-      .eq('followingId', targetUserId) // Revert to camelCase
-      .maybeSingle();
-
-    if (followCheckError) {
-      console.error("Error checking existing follow:", followCheckError);
-      return NextResponse.json({ error: 'フォロー状態の確認中にエラーが発生しました' }, { status: 500 });
-    }
-    if (followData) {
-      return NextResponse.json(
-        { error: '既にフォローしています' },
-        { status: 400 }
-      );
-    }
-
-    // フォロー関係を作成
-    const { error: insertError } = await supabase
-      .from('Follow') // Revert to PascalCase
-      .insert({
-        followerId: currentUserId, // Revert to camelCase
-        followingId: targetUserId, // Revert to camelCase
-      });
-
-     if (insertError) {
-       // Handle potential unique constraint violation
-       if (insertError.code === '23505') {
-         return NextResponse.json(
-           { error: '既にフォローしています' },
-           { status: 400 }
-         );
-       }
-       console.error('Error creating follow relationship:', insertError);
-       return NextResponse.json({ error: 'フォロー関係の作成に失敗しました' }, { status: 500 });
-     }
 
     return NextResponse.json({ success: true });
+
   } catch (error) {
-    // Keep existing error handling structure
-    console.error('Error following user:', error);
-
+    console.error('[API Follow] Error:', error);
     if (error instanceof Error && error.message === '認証が必要です') {
-      return NextResponse.json(
-        { error: '認証が必要です' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
-
     return NextResponse.json(
-      { error: 'フォローに失敗しました' },
+      { error: 'フォロー処理中に予期せぬエラーが発生しました', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
@@ -113,51 +67,50 @@ export async function POST(
 // ユーザーのフォローを解除する
 export async function DELETE(
   req: NextRequest,
-  // Update params type to use identifier
-  { params }: { params: { identifier: string } } 
+  { params }: { params: { identifier: string } }
 ) {
   try {
-    // Get identifier from params
-    const identifier = params.identifier; 
-    const currentUserId = await requireAuth();
+    const followerId = await requireAuth(); // 認証されたユーザーIDを取得
+    const followingIdentifier = params.identifier; // フォロー解除対象のIDまたはユーザー名
 
-    // フォロー解除対象のユーザーIDを取得
-    const targetUserId = await getTargetUserId(identifier);
+    // フォロー解除対象のユーザーが存在するか確認し、IDを取得
+    // Pass null as currentUserId, as we only need the profile here
+     const { profile: userToUnfollow, error: findError } = await findUserByIdentifier(followingIdentifier, null);
 
-    if (!targetUserId) {
-      // If target user not found, arguably the unfollow is "successful"
-      // or at least not an error from the client's perspective.
-      // Return success, or a specific message if needed.
+    if (findError) {
+      console.error(`[API Unfollow] Error finding user to unfollow (${followingIdentifier}):`, findError.message);
+      // If find error occurs, we can't proceed with unfollow based on ID
+      return NextResponse.json({ error: 'ユーザー検索中にエラーが発生しました', details: findError.message }, { status: 500 });
+    }
+
+    if (!userToUnfollow) {
+      // If the user doesn't exist, the "not following" state is true. Return success.
+      console.log(`[API Unfollow] Target user (${followingIdentifier}) not found. Assuming unfollow is successful.`);
       return NextResponse.json({ success: true, message: '対象ユーザーが見つからないため、フォロー解除の必要はありませんでした。' });
     }
 
-    // フォロー関係を削除
-    const { error: deleteError } = await supabase
-      .from('Follow') // Revert to PascalCase
-      .delete()
-      .eq('followerId', currentUserId) // Revert to camelCase
-      .eq('followingId', targetUserId); // Revert to camelCase
+    const followingId = userToUnfollow.id; // 確実にIDを使用
 
-    if (deleteError) {
-      // Note: Supabase delete doesn't typically error if the row doesn't exist.
-      console.error('Error deleting follow relationship:', deleteError);
-      return NextResponse.json({ error: 'フォロー関係の削除中にエラーが発生しました' }, { status: 500 });
-    }
+    // リポジトリ関数を呼び出してフォロー解除を実行
+    const { error: unfollowError } = await unfollowUser(followerId, followingId);
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    // Keep existing error handling structure
-    console.error('Error unfollowing user:', error);
-
-    if (error instanceof Error && error.message === '認証が必要です') {
+    if (unfollowError) {
+      console.error(`[API Unfollow] Error from repository unfollowing user:`, unfollowError.message);
       return NextResponse.json(
-        { error: '認証が必要です' },
-        { status: 401 }
+        { error: 'フォロー解除処理中にエラーが発生しました', details: unfollowError.message },
+        { status: 500 }
       );
     }
 
+    return NextResponse.json({ success: true });
+
+  } catch (error) {
+    console.error('[API Unfollow] Error:', error);
+     if (error instanceof Error && error.message === '認証が必要です') {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
     return NextResponse.json(
-      { error: 'フォロー解除に失敗しました' },
+      { error: 'フォロー解除処理中に予期せぬエラーが発生しました', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

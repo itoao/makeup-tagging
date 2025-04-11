@@ -25,8 +25,8 @@ export async function GET(
 
     console.log(`[API /users/${identifier}] Calling repository to find user by identifier: ${identifier}, currentAuthUser: ${currentUserId ?? 'none'}`);
 
-    // Call the repository function
-    const { profile: userProfile, error } = await findUserByIdentifier(identifier);
+    // Call the repository function, passing currentUserId
+    const { profile: userProfile, isFollowing, error } = await findUserByIdentifier(identifier, currentUserId);
 
     if (error) {
       console.error(`[API /users/${identifier}] Error from repository:`, error.message);
@@ -47,15 +47,13 @@ export async function GET(
 
     console.log(`[API /users/${identifier}] User profile found:`, userProfile);
 
-    // TODO: Determine 'isFollowing' status. This requires fetching the relationship again
-    // or modifying the repository function to return this information based on currentUserId.
-    // For now, we'll omit it or set it to a default.
-    const isFollowing = false; // Placeholder - requires additional logic
+    // Use the isFollowing status returned by the repository
+    console.log(`[API /users/${identifier}] isFollowing status from repository: ${isFollowing}`);
 
     // Repository returns the UserProfile, add context-specific flags
     return NextResponse.json({
       ...userProfile,
-      isFollowing: isFollowing, // Placeholder
+      isFollowing: isFollowing, // Use value from repository
       isCurrentUser: currentUserId === userProfile.id,
     });
   } catch (error: any) {

@@ -32,13 +32,15 @@ const mapSupabaseRowToUserProfile = (u: UserWithFollows): UserProfile => {
 /**
  * Finds a user profile by their ID or username, including follower/following counts.
  * @param identifier - The user ID or username.
- * @returns The user profile or null if not found, and an error object.
+ * @param currentUserId - The ID of the currently authenticated user (optional).
+ * @returns The user profile, follow status, or null if not found, and an error object.
  */
 export const findUserByIdentifier = async (
-  identifier: string
-): Promise<{ profile: UserProfile | null; error: Error | null }> => {
+  identifier: string,
+  currentUserId: string | null // Add currentUserId parameter
+): Promise<{ profile: UserProfile | null; isFollowing: boolean; error: Error | null }> => {
 
-  console.log(`[UserRepository] Finding user with identifier: ${identifier}`);
+  console.log(`[UserRepository] Finding user with identifier: ${identifier}, currentUserId: ${currentUserId}`);
 
   // Define select statement once
   const selectStatement = `
@@ -95,20 +97,110 @@ export const findUserByIdentifier = async (
 
   // Handle final error state
   if (error) {
-    return { profile: null, error };
+    return { profile: null, isFollowing: false, error };
   }
 
   // If data is still null after trying both, user not found
   if (!data) {
     console.log(`[UserRepository] User not found by ID or username.`);
-    return { profile: null, error: null }; // User not found
+    return { profile: null, isFollowing: false, error: null }; // User not found
   }
 
-  // Map data if found
+  // Determine follow status using the fetched data and currentUserId
+  const isFollowing = currentUserId
+    ? data.followers.some(f => f.followerId === currentUserId)
+    : false;
 
+  console.log(`[UserRepository] Determined isFollowing: ${isFollowing}`);
+
+  // Map data if found
   const userProfile = mapSupabaseRowToUserProfile(data);
 
-  return { profile: userProfile, error: null };
+  return { profile: userProfile, isFollowing, error: null };
 };
+
+/**
+ * Follows a user.
+ * @param followerId - The ID of the user initiating the follow.
+ * @param followingId - The ID of the user being followed.
+ * @returns An error object if the operation failed, otherwise null.
+ */
+export const followUser = async (
+  followerId: string,
+  followingId: string
+): Promise<{ error: Error | null }> => {
+  // Avoid self-following
+  if (followerId === followingId) {
+    return { error: new Error("自分自身をフォローすることはできません。") };
+  }
+
+  // Check if both follower and following users exist in the User table
+  const { data: usersData, error: usersCheckError } = await supabase
+    .from('User')
+    .select('id')
+    .in('id', [followerId, followingId]);
+
+  if (usersCheckError) {
+    console.error(`Error checking user existence:`, usersCheckError);
+    return { error: new Error('ユーザー存在確認中にエラーが発生しました。') };
+  }
+
+  // Check if both users were found
+  const foundFollower = usersData?.some(user => user.id === followerId);
+  const foundFollowing = usersData?.some(user => user.id === followingId);
+
+  if (!foundFollower) {
+    console.error(`Follower user with ID ${followerId} not found in User table.`);
+    return { error: new Error(`操作元のユーザー (ID: ${followerId}) が見つかりません。`) };
+  }
+  if (!foundFollowing) {
+     console.error(`Following user with ID ${followingId} not found in User table.`);
+     // This case should ideally be caught by findUserByIdentifier in the API route,
+     // but adding a check here provides extra safety.
+     return { error: new Error(`フォロー対象のユーザー (ID: ${followingId}) が見つかりません。`) };
+  }
+
+  // Proceed with insertion only if both users exist
+  const { error } = await supabase
+    .from('Follow')
+    .insert({ followerId, followingId }); // Use camelCase matching schema
+
+  if (error) {
+    // Handle potential unique constraint violation (already following) gracefully
+    if (error.code === '23505') { // Unique violation code
+      console.warn(`User ${followerId} already follows ${followingId}.`);
+      return { error: null }; // Consider it not an error in this case
+    }
+    console.error(`Error following user:`, error);
+    return { error: new Error(error.message) };
+  }
+
+  return { error: null };
+};
+
+/**
+ * Unfollows a user.
+ * @param followerId - The ID of the user initiating the unfollow.
+ * @param followingId - The ID of the user being unfollowed.
+ * @returns An error object if the operation failed, otherwise null.
+ */
+export const unfollowUser = async (
+  followerId: string,
+  followingId: string
+): Promise<{ error: Error | null }> => {
+  const { error } = await supabase
+    .from('Follow')
+    .delete()
+    .eq('followerId', followerId)
+    .eq('followingId', followingId);
+
+  if (error) {
+    console.error(`Error unfollowing user:`, error);
+    return { error: new Error(error.message) };
+  }
+
+  return { error: null };
+};
+
 
 // TODO: Add functions for findManyUsers, updateUserProfile etc.
