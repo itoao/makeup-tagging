@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
+    "test:coverage": "vitest --coverage",
     "supabase:types": "supabase gen types typescript --local > src/types/supabase.ts",
     "supabase:seed": "jiti supabase/seed.ts"
   },
