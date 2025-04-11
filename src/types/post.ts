@@ -19,7 +19,7 @@ export interface Comment {
   content: string;
   userId: string;
   postId: string;
-  createdAt: string;
+  createdAt: string | null; // Allow null
   user: UserProfile | null;
 }
 
