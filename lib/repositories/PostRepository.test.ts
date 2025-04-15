@@ -11,7 +11,9 @@ type SaveRow = Database['public']['Tables']['Save']['Row'];
 type TagRow = Database['public']['Tables']['Tag']['Row'];
 type ProductRow = Database['public']['Tables']['Product']['Row'];
 type BrandRow = Database['public']['Tables']['Brand']['Row'];
+type CommentRow = Database['public']['Tables']['Comment']['Row']; // Add CommentRow
 
+// Update PostWithRelations to include comments
 type PostWithRelations = PostRow & {
   user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null;
   likes: Pick<LikeRow, 'userId'>[];
@@ -20,6 +22,10 @@ type PostWithRelations = PostRow & {
     product: (Pick<ProductRow, 'id' | 'name' | 'imageUrl' | 'description'> & {
       brand: Pick<BrandRow, 'id' | 'name'> | null;
     }) | null;
+  })[];
+  // Add comments definition matching the repository
+  comments: (CommentRow & {
+    user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null;
   })[];
 };
 
@@ -74,20 +80,27 @@ describe('PostRepository', () => {
     const mockUserId = 'user-id-abc';
     const mockAuthUserId = 'auth-user-xyz';
 
+    // Mock data including comments
+    const mockCommentUser = { id: 'comment-user-id', username: 'commenter', name: 'Commenter', image: 'commenter.jpg' };
     const mockPostData: PostWithRelations[] = [
-      {
+      { // Post 1: Has comments, liked by auth user
         id: mockPostId1, title: 'Post 1', description: 'Desc 1', imageUrl: 'img1.jpg', userId: mockUserId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         user: { id: mockUserId, username: 'user_abc', name: 'User ABC', image: 'abc.jpg' },
-        likes: [{ userId: mockAuthUserId }], // Liked by auth user
+        likes: [{ userId: mockAuthUserId }],
         saves: [],
         tags: [],
+        comments: [
+          { id: 'comment-1', content: 'First comment', userId: mockCommentUser.id, postId: mockPostId1, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user: mockCommentUser },
+          { id: 'comment-2', content: 'Second comment', userId: mockAuthUserId, postId: mockPostId1, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user: { id: mockAuthUserId, username: 'auth_user', name: 'Auth User', image: 'auth.jpg' } },
+        ],
       },
-      {
+      { // Post 2: No comments, saved by auth user
         id: mockPostId2, title: 'Post 2', description: 'Desc 2', imageUrl: 'img2.jpg', userId: 'other-user', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         user: { id: 'other-user', username: 'other', name: 'Other User', image: 'other.jpg' },
         likes: [],
-        saves: [{ userId: mockAuthUserId }], // Saved by auth user
+        saves: [{ userId: mockAuthUserId }],
         tags: [],
+        comments: [], // No comments for this post
       },
     ];
 
@@ -105,12 +118,17 @@ describe('PostRepository', () => {
       expect(posts[0].user?.username).toBe('user_abc');
       expect(posts[0]._count?.likes).toBe(1);
       expect(posts[0]._count?.saves).toBe(0);
-      expect(posts[0].isLiked).toBe(true); // Liked by auth user
+      expect(posts[0].isLiked).toBe(true);
       expect(posts[0].isSaved).toBe(false);
+      expect(posts[0].comments).toHaveLength(2); // Check comment count for post 1
+      expect(posts[0].comments?.[0].content).toBe('First comment');
+      expect(posts[0].comments?.[0].user?.username).toBe('commenter');
+      expect(posts[0].comments?.[1].user?.username).toBe('auth_user');
       // Check mapping details for the second post
       expect(posts[1].id).toBe(mockPostId2);
       expect(posts[1].isLiked).toBe(false);
-      expect(posts[1].isSaved).toBe(true); // Saved by auth user
+      expect(posts[1].isSaved).toBe(true);
+      expect(posts[1].comments).toHaveLength(0); // Check comment count for post 2
 
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('Post');
       expect(mockSupabaseClient.select).toHaveBeenCalledWith(expect.any(String), { count: 'exact' });
@@ -184,6 +202,7 @@ describe('PostRepository', () => {
         id: 'tag-new', postId: mockNewPostId, productId: 'prod-1', created_at: new Date().toISOString(), xPosition: 10, yPosition: 20,
         product: { id: 'prod-1', name: 'Prod 1', imageUrl: 'prod1.jpg', description: 'Prod Desc', brand: { id: 'brand-1', name: 'Brand 1' } }
       }],
+      comments: [], // Add empty comments array for consistency
     };
 
     it('should insert post and tags, then fetch and return the created post', async () => {
@@ -214,6 +233,7 @@ describe('PostRepository', () => {
       expect(post?.tags[0].productId).toBe('prod-1');
       expect(post?.isLiked).toBe(false);
       expect(post?.isSaved).toBe(false);
+      expect(post?.comments).toEqual([]); // Ensure comments are empty after creation
     });
 
     it('should create post without tags if tagsData is empty', async () => {
@@ -241,6 +261,7 @@ describe('PostRepository', () => {
       expect(post).toBeDefined();
       expect(post?.id).toBe(mockNewPostId);
       expect(post?.tags).toHaveLength(0);
+      expect(post?.comments).toEqual([]); // Ensure comments are empty
     });
 
     it('should return error if post insert fails', async () => {

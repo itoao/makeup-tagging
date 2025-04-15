@@ -18,7 +18,9 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ja } from "date-fns/locale";
 // Import correct types from the types file
-import { Post, Comment, ProductTag, Product, UserProfile } from "@/src/types/product";
+import type { Product } from "@/src/types/product"; // Import Product type separately
+import type { Post, Comment, ProductTag } from "@/src/types/post"; // Import Post, Comment, ProductTag from post.ts
+import type { UserProfile } from "@/src/types/user"; // Import UserProfile from user.ts
 import { useLikePost, useSavePost } from "@/hooks/use-interactions"; // Import hooks
 
 export default function PostDetailPage() {
@@ -29,7 +31,9 @@ export default function PostDetailPage() {
   const [post, setPost] = useState<Post | null>(null);
   // Use the correct Comment type
   const [comments, setComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [postLoading, setPostLoading] = useState(true); // Renamed from loading
+  const [commentsLoading, setCommentsLoading] = useState(true); // State for comments loading
+  const [commentsError, setCommentsError] = useState<string | null>(null); // State for comments error
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Use a more descriptive type name reflecting the included product
@@ -38,33 +42,57 @@ export default function PostDetailPage() {
   const productsSectionRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
   useEffect(() => {
-    const fetchPost = async () => {
+    const fetchPostAndComments = async () => {
+      // --- Fetch Post ---
       try {
-        setLoading(true)
-        const { data, error } = await postApi.getPost(id)
+        setPostLoading(true);
+        const { data: postData, error: postError } = await postApi.getPost(id);
 
-        if (error) {
-          toast.error("投稿の読み込みに失敗しました")
-          return;
+        if (postError || !postData) {
+          toast.error("投稿の読み込みに失敗しました");
+          setPost(null); // Ensure post is null on error
+          return; // Stop if post fetch fails
         }
 
-        if (data) {
-          console.log("Fetched post data:", JSON.stringify(data, null, 2)); // Log the actual fetched data structure
-          // Cast fetched data to the Post type
-          setPost(data as Post);
-          // Cast comments to the Comment[] type
-          setComments((data.comments as Comment[]) ?? []); // Use nullish coalescing and type assertion
+        console.log("Fetched post data:", JSON.stringify(postData, null, 2));
+        setPost(postData as Post); // Set post data
+
+        // --- Fetch Comments (only after post is fetched successfully) ---
+        try {
+          setCommentsLoading(true);
+          setCommentsError(null); // Reset error state
+          // Use postApi.getComments to fetch comments
+          const { data: commentsData, error: commentsFetchError } = await postApi.getComments(id);
+
+          if (commentsFetchError || !commentsData) {
+            console.error("Fetch comments error:", commentsFetchError);
+            setCommentsError("コメントの読み込みに失敗しました");
+            setComments([]); // Clear comments on error
+          } else {
+            // Access comments via commentsData.data.comments, as apiRequest wraps the response
+            // Explicitly type commentsData.data and access its 'data' property
+            // Access the 'comments' array directly from the response
+            setComments(commentsData.comments ?? []);
+          }
+        } catch (err) {
+          console.error("Fetch comments error (catch block):", err);
+          setCommentsError("コメントの読み込み中にエラーが発生しました");
+          setComments([]);
+        } finally {
+          setCommentsLoading(false);
         }
+
       } catch (err) {
-        console.error("Fetch post error:", err);
+        console.error("Fetch post error (outer catch):", err);
         toast.error("投稿の読み込み中にエラーが発生しました");
+        setPost(null);
       } finally {
-        setLoading(false)
+        setPostLoading(false);
       }
-    }
+    };
 
-    fetchPost()
-  }, [id])
+    fetchPostAndComments();
+  }, [id]); // Dependency remains 'id'
 
   const { mutate: likePost } = useLikePost();
   const { mutate: savePost } = useSavePost();
@@ -198,7 +226,7 @@ export default function PostDetailPage() {
     }
   }
 
-  const formatDate = (dateString: string | undefined) => {
+  const formatDate = (dateString: string | null | undefined) => { // Allow null
     if (!dateString) return "日付不明";
     try {
       return formatDistanceToNow(new Date(dateString), { addSuffix: true, locale: ja })
@@ -207,7 +235,8 @@ export default function PostDetailPage() {
     }
   }
 
-  if (loading) {
+  // Show skeleton while post is loading
+  if (postLoading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-5xl">
         {/* Skeleton remains the same */}
@@ -480,9 +509,8 @@ export default function PostDetailPage() {
             </div>
           </div>
 
-          {/* Comments Section */}
+          {/* Comments Section - Conditional rendering based on loading/error states */}
           <div>
-            {/* Use _count.comments */}
             <h2 className="text-lg font-semibold mb-3">コメント ({post._count?.comments ?? 0})</h2>
             {/* Comment Form */}
             {isSignedIn && (

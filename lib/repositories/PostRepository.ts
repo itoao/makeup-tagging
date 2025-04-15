@@ -1,7 +1,7 @@
 import supabase from '@/lib/supabase';
 import type { PostgrestSingleResponse, PostgrestResponse } from '@supabase/supabase-js'; // Use import type
 import type { Database } from '@/src/types/supabase'; // Attempt to import, may fail if file is empty/invalid
-import type { Post as PostType, ProductTag } from '@/src/types/post';
+import type { Post as PostType, ProductTag, Comment } from '@/src/types/post'; // Import Comment type
 import type { UserProfile } from '@/src/types/user';
 import type { Product, Brand } from '@/src/types/product';
 
@@ -13,25 +13,49 @@ type SaveRow = Database['public']['Tables']['Save']['Row'];
 type TagRow = Database['public']['Tables']['Tag']['Row'];
 type ProductRow = Database['public']['Tables']['Product']['Row'];
 type BrandRow = Database['public']['Tables']['Brand']['Row'];
+type CommentRow = Database['public']['Tables']['Comment']['Row']; // Add CommentRow type
 
 // Type for the complex select query result using generated types
 // Type for the complex select query result using generated types
 // Adjust based on the actual select statement structure and Supabase behavior
 // NOTE: Supabase client with select<string, T> might not perfectly infer nested relations
 // when using raw select strings. We define the expected structure based on the query.
+// Type for the complex select query result including comments and their users
 type PostWithRelations = PostRow & {
-  user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null; // User might be null if join fails or user deleted
-  likes: Pick<LikeRow, 'userId'>[]; // Array of objects with userId
-  saves: Pick<SaveRow, 'userId'>[]; // Array of objects with userId
+  user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null;
+  likes: Pick<LikeRow, 'userId'>[];
+  saves: Pick<SaveRow, 'userId'>[];
   tags: (Pick<TagRow, 'id' | 'postId' | 'productId' | 'created_at' | 'xPosition' | 'yPosition'> & {
     product: (Pick<ProductRow, 'id' | 'name' | 'imageUrl' | 'description'> & {
       brand: Pick<BrandRow, 'id' | 'name'> | null;
     }) | null;
   })[];
+  // Add comments with their user data
+  comments: (CommentRow & {
+    user: Pick<UserRow, 'id' | 'username' | 'name' | 'image'> | null;
+  })[];
 };
 
 
-// Helper function to map Supabase row (using generated types) to our PostType
+// Helper function to map Supabase CommentRow with User to our Comment type
+// Similar to the one in CommentRepository, defined here to avoid cross-repo dependency
+const mapSupabaseCommentToCommentType = (c: PostWithRelations['comments'][number]): Comment => {
+  return {
+    id: c.id,
+    content: c.content,
+    userId: c.userId,
+    postId: c.postId,
+    createdAt: c.created_at,
+    user: c.user ? {
+      id: c.user.id,
+      username: c.user.username,
+      name: c.user.name,
+      image: c.user.image,
+    } : null,
+  };
+};
+
+// Helper function to map Supabase PostWithRelations row to our PostType
 const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: string | null): PostType => {
   const likesCount = p.likes?.length ?? 0;
   const savesCount = p.saves?.length ?? 0;
@@ -73,7 +97,7 @@ const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: strin
     updatedAt: p.updated_at ?? null, // Correct property name and use nullish coalescing
     _count: {
       likes: likesCount,
-      comments: 0, // Assuming comment count is fetched elsewhere or not needed here
+      comments: p.comments?.length ?? 0, // Calculate comment count from fetched data
       saves: savesCount,
     },
      // Map user directly using selected fields
@@ -84,7 +108,8 @@ const mapSupabaseRowToPostType = (p: PostWithRelations, currentAuthUserId: strin
        image: p.user.image,
      } : null,
      tags: tags,
-     comments: [], // Default empty array for now
+     // Map fetched comments using the helper function
+     comments: p.comments?.map(mapSupabaseCommentToCommentType) || [],
     isLiked: isLiked,
     isSaved: isSaved,
   } as PostType; // Explicitly cast the returned object to PostType
@@ -124,8 +149,9 @@ export const findManyPosts = async (
     user:User ( id, username, name, image ),
     likes:Like ( userId ),
     saves:Save ( userId ),
-    tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) )
-  `; // Ensure selected fields match PostWithRelations type definition
+    tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) ),
+    comments:Comment ( *, user:User ( id, username, name, image ) )
+  `;
 
   // Use type parameter with the query for better type safety from Supabase client
   let query = supabase
@@ -232,8 +258,9 @@ export const createPost = async (
     user:User ( id, username, name, image ),
     likes:Like ( userId ),
     saves:Save ( userId ),
-    tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) )
-  `; // Ensure selected fields match PostWithRelations
+    tags:Tag ( id, postId, productId, created_at, xPosition, yPosition, product:Product ( id, name, imageUrl, description, brand:Brand ( id, name ) ) ),
+    comments:Comment ( *, user:User ( id, username, name, image ) )
+  `;
 
   // Use type parameter with the query
   const { data: completePostData, error: fetchCompleteError } = await supabase

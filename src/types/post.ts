@@ -64,7 +64,17 @@ interface PaginatedResponse<T> {
     limit: number;
     total: number;
     hasNextPage: boolean;
+    pages?: number; // Add optional pages based on API response
   };
 }
 
-export type PaginatedComments = PaginatedResponse<Comment>;
+// Define PaginatedComments specifically to match the API response structure
+export interface PaginatedComments {
+  comments: Comment[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages?: number; // Match the API response structure
+  };
+}
