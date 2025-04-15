@@ -95,38 +95,7 @@ export const createComment = async (
     content,
   };
 
-  // 1. コメントを挿入する
-  const { data: insertedData, error: insertError } = await supabase
-    .from('Comment')
-    .insert(insertData);
-
-  if (insertError) {
-    console.error('Error creating comment (repository):', insertError);
-    return { comment: null, error: new Error(insertError.message) };
-  }
-
-  // insertedDataがnullの場合はエラーを返す
-  if (!insertedData) {
-    console.error('Failed to create comment.');
-    return { comment: null, error: new Error('Failed to create comment.') };
-  }
-  
-  // 挿入されたデータから最初のコメントのIDを取得
-  // Supabase v2では、insertの結果は配列で返される
-  const insertedArray = insertedData as unknown as CommentRow[];
-  
-  if (insertedArray.length === 0) {
-    console.error('No comment data returned after insert.');
-    return { comment: null, error: new Error('Failed to create comment.') };
-  }
-  
-  const commentId = insertedArray[0].id;
-  if (!commentId) {
-    console.error('Failed to get created comment ID.');
-    return { comment: null, error: new Error('Failed to get comment ID.') };
-  }
-
-  // 2. 挿入が成功したら、IDを使用して詳細データをフェッチする
+  // Define the select statement needed after insert
   const selectStatement = `
     id,
     content,
@@ -136,26 +105,45 @@ export const createComment = async (
     user:User ( id, username, name, image )
   `;
 
-  const { data: newComment, error: selectError } = await supabase
+  // Use insert().select().single() to insert and fetch in one operation
+  const { data: newCommentData, error: upsertError } = await supabase
     .from('Comment')
-    .select<string, CommentWithUser>(selectStatement)
-    .eq('id', commentId)
-    .single();
+    .insert(insertData)
+    .select<string, CommentWithUser>(selectStatement) // Select the fields including user data
+    .single(); // Expecting a single row back
 
-  if (selectError) {
-    console.error('Error fetching created comment:', selectError);
-    return { comment: null, error: new Error(selectError.message) };
+  if (upsertError) {
+    console.error('Error creating comment (repository - upsert):', { error: upsertError, inputData: insertData });
+    // Provide a generic error message to the client, log details internally
+    return { comment: null, error: new Error('コメントの作成に失敗しました (repository error)') };
   }
 
-  if (!newComment) {
-    console.error('Failed to fetch created comment details.');
-    return { comment: null, error: new Error('Failed to fetch created comment.') };
+  // Check if data is null or empty after a successful-looking operation (should be rare)
+  if (!newCommentData) {
+    console.error('Error creating comment (repository - upsert): Insert succeeded but returned no data.', { inputData: insertData });
+    return { comment: null, error: new Error('コメントの作成に失敗しました (repository error)') }; // Consistent error message
   }
 
-  // Map the fetched data
-  const mappedComment = mapSupabaseRowToCommentType(newComment);
+  // Map the fetched data using the existing helper function
+  try {
+    const mappedComment = mapSupabaseRowToCommentType(newCommentData);
 
-  return { comment: mappedComment, error: null };
+    // Add validation for the mapped user data structure
+    // If user exists in the raw data but mapping resulted in invalid user object (e.g., missing id)
+    if (newCommentData.user && (!mappedComment.user || typeof mappedComment.user.id === 'undefined')) {
+        console.error('Error mapping created comment data: Invalid user structure after mapping.', 'Raw data:', newCommentData, 'Mapped comment:', mappedComment);
+        throw new Error('Mapped user data is invalid.'); // Throw error to be caught below
+    }
+
+    console.log(`Successfully created and fetched comment ID: ${mappedComment.id}`);
+    return { comment: mappedComment, error: null };
+  } catch (mappingError) {
+      // Log the specific mapping error if it's an Error instance
+      const errorMessage = mappingError instanceof Error ? mappingError.message : String(mappingError);
+      console.error('Error during comment data mapping:', { error: errorMessage, rawData: newCommentData, inputData: insertData });
+      // Return a consistent error structure
+      return { comment: null, error: new Error('コメントの作成に失敗しました (repository error)') }; // Consistent error message
+  }
 };
 
 /**

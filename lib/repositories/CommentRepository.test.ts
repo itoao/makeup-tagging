@@ -177,31 +177,13 @@ describe('CommentRepository', () => {
     };
 
     it('コメントを正常に作成し、ユーザー情報を含めてマッピングされたデータを返すべき', async () => {
-      // Arrange: insert と select のモックを設定
-      // 実装に合わせて insert は CommentRow[] を返すようにする (id のみ含む)
-      const mockInsertResult = [{ id: mockNewCommentId, userId: mockUserId, postId: mockPostId, content: mockContent, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
-      const mockInsert = vi.fn().mockResolvedValueOnce({ data: mockInsertResult, error: null });
-      const mockSingleSelect = vi.fn().mockResolvedValueOnce({ data: mockCreatedCommentData, error: null });
+      // Arrange: Mock the insert().select().single() chain
+      const mockSingle = vi.fn().mockResolvedValueOnce({ data: mockCreatedCommentData, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
 
-      // Arrange: from().insert() と from().select().eq().single() のチェーンを個別にモック
-      const mockEqSelect = vi.fn().mockReturnValue({ single: mockSingleSelect });
-      const mockSelect = vi.fn().mockReturnValue({ eq: mockEqSelect });
-
-      // from の呼び出しに応じて返すオブジェクトを切り替え (mockImplementation を使わない)
-      mockSupabase.from.mockImplementation((tableName: string) => {
-        if (tableName === 'Comment') {
-          // 最初の呼び出しは insert、2回目は select を返すように見せかける
-          // Note: この方法は呼び出し順序に依存するため、より堅牢なのは from ごとにモックを分けることだが、
-          //       ここでは既存のテスト構造を維持しつつ修正する
-          if ((mockSupabase.from as Mock).mock.calls.length <= 1) {
-            return { insert: mockInsert };
-          } else {
-            return { select: mockSelect };
-          }
-        }
-        return {}; // 他のテーブルは空オブジェクト
-      });
-
+      // Arrange: from() returns the insert chain
+      mockSupabase.from.mockReturnValue({ insert: mockInsert });
 
       // Act: テスト対象の関数を実行
       const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
@@ -215,17 +197,17 @@ describe('CommentRepository', () => {
       expect(comment?.postId).toBe(mockPostId); // 投稿IDが正しいこと
       expect(comment?.user?.username).toBe('commenter');
       expect(comment?.createdAt).toBe(mockCreatedCommentData.created_at);
-      // expect(comment?.updatedAt).toBe(mockCreatedCommentData.updated_at); // Comment out: updatedAt is not in Comment type
+      // updatedAt は Comment 型に含まれないためコメントアウト
+      // expect(comment?.updatedAt).toBe(mockCreatedCommentData.updated_at);
 
       // Supabaseクライアント呼び出し検証
       expect(mockSupabase.from).toHaveBeenCalledWith('Comment');
-      expect(mockSupabase.from).toHaveBeenCalledTimes(2); // insert と select で2回呼ばれる
+      expect(mockSupabase.from).toHaveBeenCalledTimes(1); // Chain is called once
 
-      // 1. Insert call
+      // Verify the chain calls
       expect(mockInsert).toHaveBeenCalledWith({ postId: mockPostId, userId: mockUserId, content: mockContent });
 
-      // 2. Select chain
-      // 実装コードからコピーした select 文
+      // Verify the select statement used in the chain
       const expectedSelect = `
     id,
     content,
@@ -234,87 +216,80 @@ describe('CommentRepository', () => {
     created_at,
     user:User ( id, username, name, image )
   `;
-      // expect.stringMatching をやめ、実装からコピーした文字列で直接比較
       expect(mockSelect).toHaveBeenCalledWith(expectedSelect);
-      expect(mockEqSelect).toHaveBeenCalledWith('id', mockNewCommentId);
-      expect(mockSingleSelect).toHaveBeenCalledTimes(1);
+      expect(mockSingle).toHaveBeenCalledTimes(1);
     });
     // }); // Remove incorrect closing bracket here - This was the syntax error
 
     // Test case moved outside the previous 'it' block
-    it('挿入後のデータ取得(select full comment)でエラーが発生した場合、エラーを返すべき', async () => {
-      // Arrange: insert は成功、select は失敗
-      const mockInsertResult = [{ id: mockNewCommentId, userId: mockUserId, postId: mockPostId, content: mockContent, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
-      const mockInsert = vi.fn().mockResolvedValueOnce({ data: mockInsertResult, error: null });
-      const mockSelectError = { message: 'Select failed' };
-      const mockSingleSelect = vi.fn().mockResolvedValueOnce({ data: null, error: mockSelectError });
+    // Removed: This test case is covered by the 'Supabaseの挿入/選択処理でエラーが発生した場合' test below
+    // it('挿入後のデータ取得(select full comment)でエラーが発生した場合、エラーを返すべき', async () => { ... });
 
-      // Arrange: from().insert() と from().select().eq().single() のチェーンを個別にモック
-      const mockEqSelect = vi.fn().mockReturnValue({ single: mockSingleSelect });
-      const mockSelect = vi.fn().mockReturnValue({ eq: mockEqSelect });
+    it('Supabaseの挿入/選択処理でエラーが発生した場合 (insert().select().single() fails)、エラーを返すべき', async () => {
+      // Arrange: Mock the insert().select().single() chain to return an error
+      const mockUpsertError = { message: 'DB constraint violation' };
+      const mockSingle = vi.fn().mockResolvedValueOnce({ data: null, error: mockUpsertError });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
 
-      // from の呼び出しに応じて返すオブジェクトを切り替え
-      mockSupabase.from.mockImplementation((tableName: string) => {
-        if (tableName === 'Comment') {
-          if ((mockSupabase.from as Mock).mock.calls.length <= 1) {
-            return { insert: mockInsert };
-          } else {
-            return { select: mockSelect };
-          }
-        }
-        return {};
-      });
-
-     // Act: 関数を実行
-     const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
-
-     // Assert: selectエラーが返されること
-     expect(error?.message).toEqual(mockSelectError.message);
-     expect(comment).toBeNull();
-     expect(mockInsert).toHaveBeenCalledTimes(1); // insert は呼ばれる
-     expect(mockSingleSelect).toHaveBeenCalledTimes(1); // select も呼ばれる
-    });
-
-    it('Supabaseの挿入処理でエラーが発生した場合 (insert().select().single() fails)、エラーを返すべき', async () => {
-      // Arrange: insert がエラーを返すように設定
-      const mockInsertError = { message: 'Insert failed' };
-      const mockInsert = vi.fn().mockResolvedValueOnce({ data: null, error: mockInsertError });
-      const mockSelect = vi.fn(); // Select should not be called
-
-      // from().insert() をモック
-      mockSupabase.from.mockReturnValue({
-        insert: mockInsert,
-        // select は insert が失敗したら呼ばれないので、モック不要
-      } as any);
+      // Arrange: from() returns the insert chain
+      mockSupabase.from.mockReturnValue({ insert: mockInsert });
 
       // Act: 関数を実行
-      const { comment, error } = await createComment(mockPostId, mockUserId, mockContent); // Ensure variables are defined in scope
+      const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
 
       // Assert: エラーが返され、commentがnullであることを確認
-      expect(error?.message).toEqual(mockInsertError.message); // Compare message
+      // Check if the error message includes the original Supabase error message
+      // Repository now returns a generic message, specific error is logged internally
+      expect(error?.message).toEqual('コメントの作成に失敗しました (repository error)');
       expect(comment).toBeNull();
-      // Select chain が呼ばれないことを確認
-      expect(mockSelect).not.toHaveBeenCalled();
+
+      // Verify the chain was called
+      expect(mockSupabase.from).toHaveBeenCalledTimes(1);
+      expect(mockInsert).toHaveBeenCalledTimes(1);
+      expect(mockSelect).toHaveBeenCalledTimes(1);
+      expect(mockSingle).toHaveBeenCalledTimes(1);
     });
 
-    it('挿入後のデータ取得でデータがnullの場合 (insert().select().single() returns null data)、エラーを返すべき', async () => {
-      // Arrange: insert が null データを返すように設定 (実装の L109)
-      const mockInsert = vi.fn().mockResolvedValueOnce({ data: null, error: null });
-      const mockSelect = vi.fn(); // Select should not be called
+    it('挿入/選択処理が成功してもデータがnullの場合 (insert().select().single() returns null data)、エラーを返すべき', async () => {
+      // Arrange: Mock the insert().select().single() chain to return null data without error
+      const mockSingle = vi.fn().mockResolvedValueOnce({ data: null, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
 
-      // from().insert() をモック
-      mockSupabase.from.mockReturnValue({
-        insert: mockInsert,
-        // select は insert が null を返したら呼ばれないので、モック不要
-      } as any);
+      // Arrange: from() returns the insert chain
+      mockSupabase.from.mockReturnValue({ insert: mockInsert });
 
       // Act: 関数を実行
-      const { comment, error } = await createComment(mockPostId, mockUserId, mockContent); // Ensure variables are defined in scope
+      const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
 
-      // Assert: 特定のエラーメッセージが返されることを確認
-      expect(error?.message).toEqual('Failed to create comment.'); // 実装のエラーメッセージに合わせる
+      // Assert: 特定のエラーメッセージが返されることを確認 (実装に合わせる)
+      expect(error?.message).toEqual('コメントの作成に失敗しました (repository error)'); // Consistent error message
       expect(comment).toBeNull();
-      expect(mockSelect).not.toHaveBeenCalled(); // Select should not be called
+
+      // Verify the chain was called
+      expect(mockSupabase.from).toHaveBeenCalledTimes(1);
+      expect(mockInsert).toHaveBeenCalledTimes(1);
+      expect(mockSelect).toHaveBeenCalledTimes(1);
+      expect(mockSingle).toHaveBeenCalledTimes(1);
+    });
+
+    it('データマッピング中にエラーが発生した場合、エラーを返すべき', async () => {
+        // Arrange: Mock the insert().select().single() chain to return data that causes mapping error
+        const invalidCommentData = { ...mockCreatedCommentData, user: 'invalid-user-data' }; // Malformed user data
+        const mockSingle = vi.fn().mockResolvedValueOnce({ data: invalidCommentData, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+        mockSupabase.from.mockReturnValue({ insert: mockInsert });
+
+        // Act
+        const { comment, error } = await createComment(mockPostId, mockUserId, mockContent);
+
+        // Assert
+        expect(comment).toBeNull();
+        expect(error).toBeDefined();
+        expect(error?.message).toEqual('コメントの作成に失敗しました (repository error)'); // Consistent error message
+        expect(mockSingle).toHaveBeenCalledTimes(1); // Ensure the chain was called
     });
   });
 
