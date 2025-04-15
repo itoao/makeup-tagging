@@ -158,4 +158,132 @@ export const createComment = async (
   return { comment: mappedComment, error: null };
 };
 
-// TODO: Add functions for updateComment, deleteComment
+/**
+ * Updates an existing comment.
+ * @param commentId - The ID of the comment to update.
+ * @param userId - The ID of the user attempting the update (for authorization).
+ * @param content - The new content for the comment.
+ * @returns The updated comment data, or null if failed or unauthorized.
+ */
+export const updateComment = async (
+  commentId: string,
+  userId: string,
+  content: string
+): Promise<{ comment: Comment | null; error: Error | null }> => {
+
+  // 1. Verify ownership (fetch the comment's userId)
+  const { data: existingComment, error: fetchError } = await supabase
+    .from('Comment')
+    .select('userId')
+    .eq('id', commentId)
+    .single();
+
+  if (fetchError) {
+    console.error(`Error fetching comment ${commentId} for update check:`, fetchError);
+    // Handle not found specifically
+    if (fetchError.code === 'PGRST116') {
+        return { comment: null, error: new Error('コメントが見つかりません。') };
+    }
+    return { comment: null, error: new Error('コメント取得中にエラーが発生しました。') };
+  }
+
+   if (!existingComment) { // Should be caught by single(), but double-check
+     return { comment: null, error: new Error('コメントが見つかりません。') };
+   }
+
+  // 2. Check authorization
+  if (existingComment.userId !== userId) {
+    return { comment: null, error: new Error('このコメントを編集する権限がありません。') };
+  }
+
+  // 3. Update the comment
+  const updateData: Database['public']['Tables']['Comment']['Update'] = {
+    content,
+    updated_at: new Date().toISOString(), // Update timestamp
+  };
+
+  // Fetch the updated comment with user data after update
+  const selectStatement = `
+    id,
+    content,
+    userId,
+    postId,
+    created_at,
+    updated_at,
+    user:User ( id, username, name, image )
+  `;
+
+  const { data: updatedComment, error: updateError } = await supabase
+    .from('Comment')
+    .update(updateData)
+    .eq('id', commentId)
+    .select<string, CommentWithUser>(selectStatement) // Fetch updated row with user
+    .single();
+
+  if (updateError) {
+    console.error(`Error updating comment ${commentId}:`, updateError);
+    return { comment: null, error: new Error(updateError.message) };
+  }
+
+   if (!updatedComment) {
+     console.error(`Failed to fetch updated comment ${commentId} after update.`);
+     return { comment: null, error: new Error('更新されたコメントの取得に失敗しました。') };
+   }
+
+  // 4. Map and return
+  const mappedComment = mapSupabaseRowToCommentType(updatedComment);
+  return { comment: mappedComment, error: null };
+};
+
+
+/**
+ * Deletes a comment.
+ * @param commentId - The ID of the comment to delete.
+ * @param userId - The ID of the user attempting the deletion (for authorization).
+ * @returns An error object if the operation failed or unauthorized, otherwise null.
+ */
+export const deleteComment = async (
+  commentId: string,
+  userId: string
+): Promise<{ error: Error | null }> => {
+
+  // 1. Verify ownership
+  const { data: existingComment, error: fetchError } = await supabase
+    .from('Comment')
+    .select('userId')
+    .eq('id', commentId)
+    .single();
+
+  if (fetchError) {
+    console.error(`Error fetching comment ${commentId} for delete check:`, fetchError);
+     if (fetchError.code === 'PGRST116') { // Not found is not an error for delete
+        console.warn(`Comment ${commentId} not found for deletion, assuming already deleted.`);
+        return { error: null };
+     }
+    return { error: new Error('コメント取得中にエラーが発生しました。') };
+  }
+
+   if (!existingComment) { // Should be caught by single()
+     console.warn(`Comment ${commentId} not found for deletion, assuming already deleted.`);
+     return { error: null };
+   }
+
+  // 2. Check authorization
+  if (existingComment.userId !== userId) {
+    return { error: new Error('このコメントを削除する権限がありません。') };
+  }
+
+  // 3. Delete the comment
+  const { error: deleteError } = await supabase
+    .from('Comment')
+    .delete()
+    .eq('id', commentId);
+
+  if (deleteError) {
+    // Note: Supabase delete doesn't typically error if the row doesn't exist.
+    console.error(`Error deleting comment ${commentId}:`, deleteError);
+    return { error: new Error(deleteError.message) };
+  }
+
+  return { error: null };
+};

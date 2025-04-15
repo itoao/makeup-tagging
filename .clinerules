@@ -67,6 +67,7 @@ This guide outlines the best practices, conventions, and standards for developme
 - Create supabase/seed.ts simultaneously (ask users to `run npm run seed`)
 
 ### Unit Tests
+- Maintain test coverage at 66% or higher
 - Place unit tests in the same directory as the file under test (e.g., foo.test.ts for foo.ts)
 - Write thorough unit tests to verify individual functions and components
 - Follow the Arrange-Act-Assert pattern:
@@ -91,6 +92,10 @@ This guide outlines the best practices, conventions, and standards for developme
 - Set up proper error cases by mocking each step in the process chain
 - Use `mockImplementation()` rather than `mockReturnThis()` when complex chaining behavior is needed
 - Reset mocks for each test to prevent interference between test cases
+TODO: 
+- テストタイトルの文言ルール
+  - 日本語で,
+  - 
 
 ## Documentation
 - Write TSDoc appropriately in Japanese

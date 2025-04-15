@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import supabase from '@/lib/supabase'; // Import Supabase client
-import { requireAuth, hasAccessToResource } from '@/lib/auth';
-// TODO: Import generated Supabase types if available
+// Remove direct Supabase client import
+// import supabase from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth'; // Keep requireAuth
+// Import repository functions
+import { updateComment, deleteComment } from '@/lib/repositories/CommentRepository';
+// Import Comment type if needed for response structure
+import type { Comment } from '@/src/types/post';
 
 // コメントを更新
 export async function PATCH(
@@ -10,40 +14,7 @@ export async function PATCH(
 ) {
   try {
     const commentId = params.commentId;
-    const userId = await requireAuth();
-
-    // コメントを取得して所有者を確認
-    const { data: commentData, error: fetchError } = await supabase
-      .from('Comment') // Revert to PascalCase
-      .select('userId') // Revert to camelCase
-      .eq('id', commentId)
-      .single(); // Use single to error if not found
-
-    if (fetchError) {
-       if (fetchError.code === 'PGRST116') { // Comment not found
-         return NextResponse.json(
-           { error: 'コメントが見つかりません' },
-           { status: 404 }
-         );
-       }
-       console.error("Error fetching comment for update:", fetchError);
-       return NextResponse.json({ error: 'コメントの取得中にエラーが発生しました' }, { status: 500 });
-    }
-
-    if (!commentData) { // Should be caught by single()
-      return NextResponse.json(
-        { error: 'コメントが見つかりません' },
-        { status: 404 }
-      );
-    }
-
-    // コメントの所有者かどうか確認
-    if (!hasAccessToResource(commentData.userId)) { // Check against fetched userId
-      return NextResponse.json(
-        { error: 'この操作を行う権限がありません' },
-        { status: 403 }
-      );
-    }
+    const userId = await requireAuth(); // Get authenticated user ID
 
     // リクエストボディを取得
     const body = await req.json();
@@ -57,43 +28,49 @@ export async function PATCH(
       );
     }
 
-    // コメントを更新し、ユーザー情報を含めて取得
-    const { data: updatedCommentData, error: updateError } = await supabase
-      .from('Comment') // Revert to PascalCase
-      .update({ content })
-      .eq('id', commentId)
-      .select(`
-        *,
-        User ( id, username, name, image )
-      `)
-      .single();
+    console.log(`[API /comments/${commentId}] Calling repository to update comment`);
+
+    // Call repository function to update comment (includes ownership check)
+    const { comment: updatedComment, error: updateError } = await updateComment(
+      commentId,
+      userId,
+      content
+    );
 
     if (updateError) {
-      console.error('Error updating comment:', updateError);
-      return NextResponse.json({ error: 'コメントの更新に失敗しました' }, { status: 500 });
+      console.error(`[API /comments/${commentId}] Error from repository:`, updateError.message);
+      // Handle specific errors from repository (e.g., not found, forbidden)
+      if (updateError.message.includes('見つかりません')) {
+        return NextResponse.json({ error: updateError.message }, { status: 404 });
+      }
+      if (updateError.message.includes('権限がありません')) {
+        return NextResponse.json({ error: updateError.message }, { status: 403 });
+      }
+      // Generic server error for other repository issues
+      return NextResponse.json(
+        { error: 'コメントの更新に失敗しました (repository error)', details: updateError.message },
+        { status: 500 }
+      );
     }
 
-    // Map user relation from PascalCase
-    const updatedCommentResponse = {
-        ...updatedCommentData,
-        user: updatedCommentData.User,
-        User: undefined,
-    };
+    if (!updatedComment) {
+       // Should ideally be caught by error handling above, but as a safeguard
+       console.error(`[API /comments/${commentId}] Repository returned null comment without error.`);
+       return NextResponse.json({ error: 'コメントの更新に失敗しました' }, { status: 500 });
+    }
 
-    return NextResponse.json(updatedCommentResponse);
+    console.log(`[API /comments/${commentId}] Successfully updated comment.`);
+    return NextResponse.json(updatedComment); // Return the updated comment from repo
   } catch (error) {
     // Keep existing error handling
     console.error('Error updating comment:', error);
 
     if (error instanceof Error && error.message === '認証が必要です') {
-      return NextResponse.json(
-        { error: '認証が必要です' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
     return NextResponse.json(
-      { error: 'コメントの更新に失敗しました' },
+      { error: 'コメントの更新中に予期せぬエラーが発生しました', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
@@ -106,61 +83,28 @@ export async function DELETE(
 ) {
   try {
     const commentId = params.commentId;
-    const userId = await requireAuth();
+    const userId = await requireAuth(); // Get authenticated user ID
 
-    // コメントと関連する投稿の所有者IDを取得
-    const { data: commentToDeleteData, error: fetchError } = await supabase
-      .from('Comment') // Revert to PascalCase
-      .select(`
-        userId,
-        Post ( userId ) 
-      `) // Revert to camelCase & PascalCase
-      .eq('id', commentId)
-      .single();
+    console.log(`[API /comments/${commentId}] Calling repository to delete comment`);
 
-    if (fetchError) {
-       if (fetchError.code === 'PGRST116') { // Comment not found
-         return NextResponse.json(
-           { error: 'コメントが見つかりません' },
-           { status: 404 }
-         );
-       }
-       console.error("Error fetching comment for deletion:", fetchError);
-       return NextResponse.json({ error: 'コメントの取得中にエラーが発生しました' }, { status: 500 });
-    }
-
-
-    if (!commentToDeleteData) { // Should be caught by single()
-      return NextResponse.json(
-        { error: 'コメントが見つかりません' },
-        { status: 404 }
-      );
-    }
-
-    // コメントの所有者または投稿の所有者かどうか確認
-    const isCommentOwner = commentToDeleteData.userId === userId; // Use camelCase
-    // Access nested post owner id, using a safer type assertion
-    const postData = commentToDeleteData.Post as unknown as { userId: string } | null; // Use PascalCase & camelCase
-    const isPostOwner = postData?.userId === userId; // Use camelCase
-
-    if (!isCommentOwner && !isPostOwner) {
-      return NextResponse.json(
-        { error: 'この操作を行う権限がありません' },
-        { status: 403 }
-      );
-    }
-
-    // コメントを削除
-    const { error: deleteError } = await supabase
-      .from('Comment') // Revert to PascalCase
-      .delete()
-      .eq('id', commentId);
+    // Call repository function to delete comment (includes ownership check)
+    const { error: deleteError } = await deleteComment(commentId, userId);
 
     if (deleteError) {
-      console.error('Error deleting comment:', deleteError);
-      return NextResponse.json({ error: 'コメントの削除に失敗しました' }, { status: 500 });
+      console.error(`[API /comments/${commentId}] Error from repository:`, deleteError.message);
+      // Handle specific errors from repository (e.g., forbidden)
+      // Note: Repository currently handles "not found" gracefully by returning null error.
+      if (deleteError.message.includes('権限がありません')) {
+        return NextResponse.json({ error: deleteError.message }, { status: 403 });
+      }
+      // Generic server error for other repository issues
+      return NextResponse.json(
+        { error: 'コメントの削除に失敗しました (repository error)', details: deleteError.message },
+        { status: 500 }
+      );
     }
 
+    console.log(`[API /comments/${commentId}] Successfully deleted comment.`);
     return NextResponse.json({ success: true });
   } catch (error) {
     // Keep existing error handling
