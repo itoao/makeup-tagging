@@ -279,13 +279,13 @@ export default function PostDetailPage() {
   const isOwner = currentUser?.id === post.userId; // Use post.userId
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl">
-      <div className="grid md:grid-cols-2 gap-8">
+    <div className="w-full px-2 py-4 max-w-full">
+      <div className="grid w-full max-w-full gap-4 overflow-x-hidden">
         {/* Image Section */}
-        <div className="relative">
-          <div className="sticky top-8">
+        <div className="relative w-full max-w-full overflow-x-hidden">
+          <div className="sticky top-8 w-full max-w-full overflow-x-hidden">
           {/* Ensure image container takes full width of its grid column */}
-          <div className="relative aspect-[3/4] w-full rounded-lg overflow-hidden border"> {/* Added w-full */}
+          <div className="relative aspect-[3/4] w-full max-w-full rounded-lg overflow-hidden border overflow-x-hidden"> {/* Added w-full max-w-full overflow-x-hidden */}
             <Image
               src={post.imageUrl || "/placeholder.svg"} // Use imageUrl from provided data
               alt={post.title ?? 'Post image'} // Use title for alt text
