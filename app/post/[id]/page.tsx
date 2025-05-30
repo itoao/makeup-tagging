@@ -285,7 +285,7 @@ export default function PostDetailPage() {
         <div className="relative w-full max-w-full overflow-x-hidden">
           <div className="sticky top-8 w-full max-w-full overflow-x-hidden">
           {/* Ensure image container takes full width of its grid column */}
-          <div className="relative aspect-[3/4] w-full max-w-full rounded-lg overflow-hidden border overflow-x-hidden"> {/* Added w-full max-w-full overflow-x-hidden */}
+          <div className="relative aspect-[3/4] w-full max-w-[390px] rounded-lg overflow-hidden border overflow-x-hidden"> {/* Added w-full max-w-full overflow-x-hidden */}
             <Image
               src={post.imageUrl || "/placeholder.svg"} // Use imageUrl from provided data
               alt={post.title ?? 'Post image'} // Use title for alt text
