@@ -98,8 +98,16 @@ async function main() {
       email: 'another@example.com',
       image: '/placeholder-user.jpg',
     };
+    // Add the user causing the foreign key error
+    const userData3 = {
+      id: 'user_2uDgDRc3ajvqpHIB1qdc40Jb0h9', // The ID from the error message
+      username: 'clerk_user_placeholder', // Placeholder username
+      name: 'Clerk User', // Placeholder name
+      email: 'clerk_user@example.com', // Placeholder email
+      image: '/placeholder-user.jpg', // Placeholder image
+    };
 
-    const userUpsertPromises = [userData1, userData2].map(ud =>
+    const userUpsertPromises = [userData1, userData2, userData3].map(ud =>
       supabase.from('User').upsert(ud) // Use PascalCase table name
     );
     const userResults = await Promise.all(userUpsertPromises);
@@ -112,7 +120,8 @@ async function main() {
     // Store user IDs for follow seeding
     const user1Id = userData1.id;
     const user2Id = userData2.id;
-    console.log(`Users "${userData1.username}" and "${userData2.username}" processed.`);
+    const user3Id = userData3.id; // Store the new user ID if needed later
+    console.log(`Users "${userData1.username}", "${userData2.username}", and "${userData3.username}" processed.`);
 
 
     // --- Create Products ---
