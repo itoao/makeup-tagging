@@ -2,6 +2,7 @@ import supabase from '@/lib/supabase'; // Corrected import path
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { Database } from '@/src/types/supabase'; // Import generated types
 import type { Product, Brand, Category } from '@/src/types/product'; // Import application types
+import { mockProducts } from '@/lib/mock-data';
 
 // Define types using generated Database types
 type ProductRow = Database['public']['Tables']['Product']['Row'];
@@ -50,6 +51,9 @@ export const fetchProducts = async (
   const from = skip;
   const to = skip + limit - 1;
 
+  // Use mock data if Supabase is not available
+  try {
+
   // Define the select statement matching ProductWithRelations
   const selectStatement = `
       id,
@@ -96,6 +100,44 @@ export const fetchProducts = async (
   const totalCount = count ?? 0;
 
   return { products, total: totalCount, error: null };
+  } catch (err) {
+    console.warn('Supabase unavailable, using mock data:', err);
+    
+    // Filter mock data based on options
+    let filteredProducts = [...mockProducts];
+    
+    if (name) {
+      filteredProducts = filteredProducts.filter(p => 
+        p.name.toLowerCase().includes(name.toLowerCase())
+      );
+    }
+    if (brandId) {
+      filteredProducts = filteredProducts.filter(p => p.brand_id === brandId);
+    }
+    if (categoryId) {
+      filteredProducts = filteredProducts.filter(p => p.category_id === categoryId);
+    }
+    
+    // Apply pagination
+    const paginatedProducts = filteredProducts.slice(from, to + 1);
+    
+    // Map to Product type
+    const products: Product[] = paginatedProducts.map(p => ({
+      id: p.id,
+      name: p.name,
+      description: null,
+      price: null,
+      imageUrl: p.image_url,
+      brandId: p.brand_id,
+      categoryId: p.category_id,
+      brand: p.brand,
+      category: p.category,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }));
+    
+    return { products, total: filteredProducts.length, error: null };
+  }
 };
 
 /**

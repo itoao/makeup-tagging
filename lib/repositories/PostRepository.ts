@@ -4,6 +4,7 @@ import type { Database } from '@/src/types/supabase'; // Attempt to import, may 
 import type { Post as PostType, ProductTag, Comment } from '@/src/types/post'; // Import Comment type
 import type { UserProfile } from '@/src/types/user';
 import type { Product, Brand } from '@/src/types/product';
+import { mockPosts } from '@/lib/mock-data';
 
 // Define types using generated Database types
 type PostRow = Database['public']['Tables']['Post']['Row'];
@@ -135,6 +136,8 @@ export const findManyPosts = async (
   const from = skip;
   const to = skip + limit - 1;
 
+  try {
+
   // Define the select statement matching PostWithRelations structure
   // Note: Supabase client might infer types better if select isn't a raw string,
   // but using string for clarity based on previous code. Ensure it matches the type.
@@ -180,6 +183,58 @@ export const findManyPosts = async (
   const totalCount = count ?? 0;
 
   return { posts, total: totalCount, error: null };
+  } catch (err) {
+    console.warn('Supabase unavailable, using mock data:', err);
+    
+    // Filter mock data based on options
+    let filteredPosts = [...mockPosts];
+    
+    if (userIdParam) {
+      filteredPosts = filteredPosts.filter(p => p.user_id === userIdParam);
+    }
+    
+    // Apply pagination
+    const paginatedPosts = filteredPosts.slice(from, to + 1);
+    
+    // Map to PostType
+    const posts: PostType[] = paginatedPosts.map(p => ({
+      id: p.id,
+      title: p.content.slice(0, 50), // Use first part of content as title
+      description: p.content,
+      imageUrl: p.image_url,
+      userId: p.user_id,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      likesCount: p.likes.length,
+      commentsCount: 0,
+      savesCount: p.saves.length,
+      counts: {
+        likes: p.likes.length,
+        comments: 0,
+        saves: p.saves.length,
+      },
+      user: p.users,
+      tags: p.tags.map(t => ({
+        id: t.id,
+        postId: p.id,
+        product: t.products ? {
+          id: t.products.id,
+          name: t.products.name,
+          description: t.products.description || null,
+          imageUrl: t.products.image_url,
+          brand: t.products.brand,
+        } : null,
+        xPosition: t.x,
+        yPosition: t.y,
+        createdAt: '2024-01-01T00:00:00Z',
+      })),
+      comments: [],
+      isLiked: p.isLiked || false,
+      isSaved: p.isSaved || false,
+    }));
+    
+    return { posts, total: filteredPosts.length, error: null };
+  }
 };
 
 

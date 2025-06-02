@@ -153,3 +153,4 @@ type FetchResult<T, E> = {
 ## Git
 - mainからブランチを切らない
 - コミットは1つにまとめず、適切な粒度で分割して行う
+- 作業時はgit worktreeを活用する
