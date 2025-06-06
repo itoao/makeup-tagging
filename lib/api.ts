@@ -183,7 +183,7 @@ export const postApi = {
     // Use Post type for the response (assuming API returns created post)
     return apiRequest<Post>('/posts', {
       method: 'POST',
-      body: formData, // Pass FormData directly to body
+      formData,
     });
   },
 
@@ -192,7 +192,7 @@ export const postApi = {
     // Use Post type for the response (assuming API returns updated post)
     return apiRequest<Post>(`/posts/${postId}`, {
       method: 'PATCH',
-      body: formData, // Pass FormData directly to body
+      formData,
     });
   },
 
@@ -296,7 +296,7 @@ export const productApi = {
     // Use Product type for the response (assuming API returns created product)
     return apiRequest<Product>('/products', {
       method: 'POST',
-      body: formData, // Pass FormData directly to body
+      formData,
     });
   },
 
@@ -317,7 +317,7 @@ export const productApi = {
     // Use Brand type for the response (assuming API returns created brand)
     return apiRequest<Brand>('/brands', {
       method: 'POST',
-      body: formData, // Pass FormData directly to body
+      formData,
     });
   },
 
